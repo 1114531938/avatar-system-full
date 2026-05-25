@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avatar Web Studio</title>
+    <link rel="stylesheet" href="/static/style.css?v=viewer-20260425-avatars-01" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Avatar Web Studio</p>
+          <h1>Voice to Avatar</h1>
+        </div>
+        <div class="status-pill" id="serverStatus">Ready</div>
+      </section>
+
+      <section class="workspace">
+        <div class="panel input-panel">
+          <h2>Input</h2>
+
+          <details class="settings-box" open>
+            <summary>Settings</summary>
+            <label class="field compact">
+              <span>OpenAI API Key</span>
+              <input id="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+            </label>
+            <label class="field compact">
+              <span>Base URL</span>
+              <input id="baseUrl" value="https://openrouter.ai/api/v1" />
+            </label>
+            <label class="field compact">
+              <span>Model</span>
+              <input id="modelName" value="openai/gpt-oss-120b:free" />
+            </label>
+            <div class="settings-actions">
+              <button id="saveSettingsBtn" type="button">Save Settings</button>
+              <span id="keyStatus">Key missing</span>
+            </div>
+          </details>
+
+          <label class="field">
+            <span>Avatar</span>
+            <select id="avatarPreset"></select>
+          </label>
+
+          <label class="field compact">
+            <span>Avatar ID</span>
+            <input id="avatarId" value="306" inputmode="numeric" />
+          </label>
+
+          <div class="recorder">
+            <div class="meter">
+              <div id="meterFill"></div>
+            </div>
+            <div class="button-row">
+              <button id="recordBtn" type="button">Record</button>
+              <button id="stopBtn" type="button" disabled>Stop</button>
+            </div>
+            <audio id="recordPreview" controls hidden></audio>
+          </div>
+
+          <label class="upload-box">
+            <input id="fileInput" type="file" accept=".wav,audio/wav,audio/x-wav" />
+            <span id="fileLabel">Choose a WAV file</span>
+          </label>
+
+          <div class="toggles">
+            <label><input id="noLlm" type="checkbox" /> Skip LLM</label>
+            <label><input id="prepareOnly" type="checkbox" /> Do not launch viewer</label>
+            <label><input id="noVideo" type="checkbox" /> Do not export video</label>
+          </div>
+
+          <button id="submitBtn" class="primary" type="button">Generate</button>
+        </div>
+
+        <div class="panel output-panel">
+          <h2>Output</h2>
+          <div id="jobSummary" class="summary">Waiting for a job.</div>
+          <div class="view-switch" role="tablist" aria-label="Output view">
+            <button id="videoTab" type="button" class="active" aria-selected="true">Video</button>
+            <button id="renderedTab" type="button" aria-selected="false">3D Render</button>
+            <button id="debugTab" type="button" aria-selected="false">3D Debug</button>
+          </div>
+          <video id="finalVideo" controls playsinline hidden></video>
+
+          <div id="viewerPanel" class="viewer-panel" hidden>
+            <div class="viewer-stage" id="viewerStage">
+              <canvas id="viewerCanvas"></canvas>
+              <canvas id="viewerGpuCanvas" hidden></canvas>
+              <img id="renderPreviewImage" alt="Rendered Gaussian preview" hidden />
+              <div id="renderPreviewLoading" class="render-preview-loading" hidden>
+                <span class="render-preview-spinner"></span>
+                <span>Rendering view...</span>
+              </div>
+              <div id="viewerNotice" class="viewer-notice">3D viewer waiting for assets.</div>
+            </div>
+            <div class="viewer-controls">
+              <button id="viewerPlayBtn" type="button" aria-label="Play or pause 3D viewer" title="Play/Pause">▶</button>
+              <input id="viewerSeek" type="range" min="0" max="1" step="0.001" value="0" aria-label="3D viewer timeline" />
+              <span id="viewerTime">0:00 / 0:00 · frame 0</span>
+              <button id="viewerResetBtn" type="button" aria-label="Reset camera" title="Reset camera">⌂</button>
+              <button id="viewerFitBtn" type="button">Fit Subject</button>
+              <button id="viewerExportBtn" type="button">Export View</button>
+            </div>
+            <div id="debugControls" class="debug-controls" hidden>
+              <button id="debugPointBtn" type="button" class="active" aria-pressed="true">Point</button>
+              <button id="debugSplatBtn" type="button" aria-pressed="false">WebGPU</button>
+            </div>
+            <div id="splatControls" class="splat-controls" hidden>
+              <label>
+                <span>Splat Size</span>
+                <input id="splatSize" type="range" min="0.05" max="2" step="0.05" value="0.6" />
+              </label>
+              <label>
+                <span>Opacity</span>
+                <input id="splatOpacity" type="range" min="0.2" max="2" step="0.05" value="1" />
+              </label>
+            </div>
+            <div id="renderPreviewStatus" class="viewer-export-status"></div>
+            <div id="viewerExportStatus" class="viewer-export-status"></div>
+            <audio id="viewerAudio" preload="metadata"></audio>
+          </div>
+
+          <div class="downloads" id="downloads"></div>
+          <pre id="paths" class="paths"></pre>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="log-head">
+          <h2>Logs</h2>
+          <button id="refreshBtn" type="button" disabled>Refresh</button>
+        </div>
+        <pre id="logBox">No logs yet.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="/static/app.js?v=viewer-20260425-avatars-01"></script>
+  </body>
+</html>

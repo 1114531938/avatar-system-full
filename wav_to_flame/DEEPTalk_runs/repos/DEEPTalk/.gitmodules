@@ -1,0 +1,3 @@
+[submodule "DEEPTalk/externals/spectre"]
+	path = DEEPTalk/externals/spectre
+	url = https://github.com/filby89/spectre

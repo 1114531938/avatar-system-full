@@ -1,0 +1,40 @@
+# ========= system global ========== #
+models:
+    merg:
+        model_name: MERGModel
+        agent_name: DeepSpeedAgent
+
+seed: 13
+max_length: 2048
+max_response_length: 512
+logging_step: 50
+
+vicuna_version: 7b_v0 
+pretrained_ckpt_path: ckpt/pretrained_ckpt/
+data_path: merg_data
+freeze_lm: false
+freeze_input_proj: false
+warmup_rate: 0.1
+epochs: 6
+max_length: 512
+max_shard_size: 10GB
+
+# ========= lora hyper-params ========== #
+lora_r: 8
+lora_alpha: 32
+lora_dropout: 0.1
+
+
+# ========= multimodal encoder ========== #
+imagebind_version: huge
+
+num_vid_tokens: 24
+num_aud_tokens: 24
+
+num_gen_aud_tokens: 16
+num_gen_vid_tokens: 16
+
+
+
+
+

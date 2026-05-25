@@ -1,0 +1,80 @@
+paths:
+  perception_root: /scratch/e1554543/avatar_system_full/perception_layer
+  perception_venv: /scratch/e1554543/avatar_system_full/perception_layer/.perception
+  perception_out_dir: /scratch/e1554543/avatar_system_full/perception_layer/results/merged
+  perception_task1_out_dir: /scratch/e1554543/avatar_system_full/perception_layer/results/task1
+
+  avamerg_root: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline
+  avamerg_venv: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/.avamerg38
+  avamerg_reply_out_dir: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/outputs/infer_custom
+
+  emotivoice_root: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo
+  emotivoice_venv: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/.EmotiVoice
+  emotivoice_input_dir: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/input
+  emotivoice_frontend_py: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/frontend.py
+  json_to_emotivoice_script: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/json_to_emotivoice_input.py
+  emotivoice_output_wav_glob: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/*.wav
+
+  deeptalk_root: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk
+  deeptalk_venv: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/.deeptalk39
+  deeptalk_output_npy: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk/outputs/params/1.npy
+  deeptalk_merge_script: /scratch/e1554543/avatar_system_full/wav_to_flame/deeptalk_to_demo_flame_param.py
+
+  gaussian_root: /scratch/e1554543/avatar_system_full/GSavatar_runs/GaussianAvatars
+  gaussian_venv: /scratch/e1554543/avatar_system_full/GSavatar_runs/GaussianAvatars/.GSavatar_glibc
+  gaussian_container_image: /scratch/e1554543/avatar_system_full/containers/gaussianav_jammy
+
+env:
+  HF_HOME: /scratch/e1554543/avatar_system_full/cache/hf
+  XDG_CACHE_HOME: /scratch/e1554543/avatar_system_full/cache/xdg
+  MODELSCOPE_CACHE: /scratch/e1554543/avatar_system_full/cache/modelscope
+  NLTK_DATA: /scratch/e1554543/avatar_system_full/cache/nltk_data
+  OPENAI_BASE_URL: https://openrouter.ai/api/v1
+  LLM_MODEL: openai/gpt-oss-120b:free
+
+perception:
+  model: small
+  language: Chinese
+  speaker_id: user
+  ser_model: iic/emotion2vec_plus_seed
+
+tts:
+  speaker_id: 6224
+  prompt_mode: goal
+  wrap_sos_eos: true
+
+tts_worker:
+  enabled: true
+  url: http://127.0.0.1:8788
+  timeout: 120
+
+avamerg_worker:
+  enabled: true
+  url: http://127.0.0.1:8789
+  timeout: 240
+
+deeptalk_worker:
+  enabled: true
+  url: http://127.0.0.1:8790
+  timeout: 180
+
+perception_worker:
+  enabled: true
+  url: http://127.0.0.1:8791
+  timeout: 180
+
+merge:
+  expr_scale: 1.0
+  jaw_scale: 1.0
+  # Lip-sync tuning knobs. Negative temporal_shift_frames advances mouth motion.
+  jaw_open_scale:
+  jaw_side_scale:
+  jaw_twist_scale:
+  mouth_open_bias: 0.0
+  temporal_shift_frames: 0
+  smooth_window: 1
+  zero_translation: true
+
+runtime:
+  run_root: /scratch/e1554543/avatar_system_full/outputs
+  viewer_detached: true
