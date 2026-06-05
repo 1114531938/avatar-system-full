@@ -34,13 +34,37 @@ except ImportError:
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
+    if opt.micro_expression_only and not dataset.bind_to_mesh:
+        raise ValueError("--micro_expression_only requires --bind_to_mesh")
+    if opt.micro_expression_only and (not dataset.load_model_path or dataset.load_iteration == 0):
+        raise ValueError("--micro_expression_only requires --load_model_path and a nonzero --load_iteration")
+    if opt.micro_expression_only and os.path.abspath(dataset.model_path) == os.path.abspath(dataset.load_model_path):
+        raise ValueError("--micro_expression_only output model_path must differ from --load_model_path")
     tb_writer = prepare_output_and_logger(dataset)
     if dataset.bind_to_mesh:
-        gaussians = FlameGaussianModel(dataset.sh_degree, dataset.disable_flame_static_offset, dataset.not_finetune_flame_params)
+        gaussians = FlameGaussianModel(
+            dataset.sh_degree,
+            dataset.disable_flame_static_offset,
+            dataset.not_finetune_flame_params,
+            enable_micro_expression=dataset.enable_micro_expression,
+            micro_expression_anchor_count=dataset.micro_expression_anchor_count,
+            micro_expression_topk=dataset.micro_expression_topk,
+            micro_expression_hidden_dim=dataset.micro_expression_hidden_dim,
+            micro_expression_embed_dim=dataset.micro_expression_embed_dim,
+            micro_expression_head_mode=dataset.micro_expression_head_mode,
+            micro_expression_appearance_mode=dataset.micro_expression_appearance_mode,
+            micro_expression_use_deformation=dataset.micro_expression_use_deformation,
+            micro_expression_position_scale=dataset.micro_expression_position_scale,
+            micro_expression_scaling_scale=dataset.micro_expression_scaling_scale,
+            micro_expression_opacity_scale=dataset.micro_expression_opacity_scale,
+            micro_expression_rotation_scale=dataset.micro_expression_rotation_scale,
+            micro_expression_appearance_scale=dataset.micro_expression_appearance_scale,
+        )
         mesh_renderer = NVDiffRenderer()
     else:
         gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)
+    init_iteration = dataset.load_iteration if dataset.load_model_path else None
+    scene = Scene(dataset, gaussians, load_iteration=init_iteration)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -159,6 +183,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         
             if opt.lambda_laplacian != 0:
                 losses['lap'] = gaussians.compute_laplacian_loss() * opt.lambda_laplacian
+
+            if gaussians.micro_expression is not None and opt.lambda_micro_expression_offset != 0:
+                losses['micro_offset'] = (
+                    gaussians.compute_micro_expression_offset_loss() *
+                    opt.lambda_micro_expression_offset
+                )
         
         losses['total'] = sum([v for k, v in losses.items()])
         losses['total'].backward()
@@ -180,6 +210,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     postfix["lap"] = f"{losses['lap']:.{7}f}"
                 if 'dynamic_offset_std' in losses:
                     postfix["dynamic_offset_std"] = f"{losses['dynamic_offset_std']:.{7}f}"
+                if 'micro_offset' in losses:
+                    postfix["micro_offset"] = f"{losses['micro_offset']:.{7}f}"
                 progress_bar.set_postfix(postfix)
                 progress_bar.update(10)
             if iteration == opt.iterations:
@@ -192,7 +224,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 scene.save(iteration)
 
             # Densification
-            if iteration < opt.densify_until_iter:
+            if not opt.micro_expression_only and iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
@@ -249,6 +281,8 @@ def training_report(tb_writer, iteration, losses, elapsed, testing_iterations, s
             tb_writer.add_scalar('train_loss_patches/laplacian', losses['laplacian'].item(), iteration)
         if 'dynamic_offset_std' in losses:
             tb_writer.add_scalar('train_loss_patches/dynamic_offset_std', losses['dynamic_offset_std'].item(), iteration)
+        if 'micro_offset' in losses:
+            tb_writer.add_scalar('train_loss_patches/micro_offset', losses['micro_offset'].item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', losses['total'].item(), iteration)
         tb_writer.add_scalar('iter_time', elapsed, iteration)
 

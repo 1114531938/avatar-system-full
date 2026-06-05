@@ -3,10 +3,11 @@ set -euo pipefail
 
 ROOT="/scratch/e1554543/avatar_system_full"
 HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-7860}"
+PORT="${PORT:-7861}"
 TTS_WORKER_HOST="${TTS_WORKER_HOST:-127.0.0.1}"
 TTS_WORKER_PORT="${TTS_WORKER_PORT:-8788}"
 TTS_WORKER_URL="http://${TTS_WORKER_HOST}:${TTS_WORKER_PORT}"
+TTS_WORKER_START_TIMEOUT="${TTS_WORKER_START_TIMEOUT:-240}"
 AVAMERG_WORKER_HOST="${AVAMERG_WORKER_HOST:-127.0.0.1}"
 AVAMERG_WORKER_PORT="${AVAMERG_WORKER_PORT:-8789}"
 AVAMERG_WORKER_URL="http://${AVAMERG_WORKER_HOST}:${AVAMERG_WORKER_PORT}"
@@ -24,13 +25,14 @@ GAUSSIAN_RENDER_WORKER_PORT="${GAUSSIAN_RENDER_WORKER_PORT:-8792}"
 GAUSSIAN_RENDER_WORKER_URL="http://${GAUSSIAN_RENDER_WORKER_HOST}:${GAUSSIAN_RENDER_WORKER_PORT}"
 START_GAUSSIAN_RENDER_WORKER="${START_GAUSSIAN_RENDER_WORKER:-1}"
 RUN_DIR="$ROOT/outputs/service_logs"
-WEB_LOG="$RUN_DIR/web.log"
+WEB_SCRIPT="${WEB_SCRIPT:-$ROOT/scripts/run_web.sh}"
+WEB_LOG="${WEB_LOG:-$RUN_DIR/web.log}"
 TTS_LOG="$RUN_DIR/tts_worker.log"
 AVAMERG_LOG="$RUN_DIR/avamerg_worker.log"
 DEEPTALK_LOG="$RUN_DIR/deeptalk_worker.log"
 PERCEPTION_LOG="$RUN_DIR/perception_worker.log"
 GAUSSIAN_RENDER_LOG="$RUN_DIR/gaussian_render_worker.log"
-WEB_PID_FILE="$RUN_DIR/web.pid"
+WEB_PID_FILE="${WEB_PID_FILE:-$RUN_DIR/web.pid}"
 TTS_PID_FILE="$RUN_DIR/tts_worker.pid"
 AVAMERG_PID_FILE="$RUN_DIR/avamerg_worker.pid"
 DEEPTALK_PID_FILE="$RUN_DIR/deeptalk_worker.pid"
@@ -170,7 +172,7 @@ start_tts() {
   TTS_WORKER_HOST="$TTS_WORKER_HOST" TTS_WORKER_PORT="$TTS_WORKER_PORT" \
     nohup bash "$ROOT/scripts/run_tts_worker.sh" >"$TTS_LOG" 2>&1 &
   echo "$!" >"$TTS_PID_FILE"
-  wait_for_url "$TTS_WORKER_URL/health" "$TTS_PID_FILE" "$TTS_LOG" "TTS worker" 90
+  wait_for_url "$TTS_WORKER_URL/health" "$TTS_PID_FILE" "$TTS_LOG" "TTS worker" "$TTS_WORKER_START_TIMEOUT"
   echo "[service] TTS worker ready pid=$(cat "$TTS_PID_FILE")"
 }
 
@@ -249,7 +251,7 @@ start_web() {
   fi
   echo "[service] starting web server on ${HOST}:${PORT}"
   HOST="$HOST" PORT="$PORT" GAUSSIAN_RENDER_WORKER_URL="$GAUSSIAN_RENDER_WORKER_URL" \
-    nohup bash "$ROOT/scripts/run_web.sh" >"$WEB_LOG" 2>&1 &
+    nohup bash "$WEB_SCRIPT" >"$WEB_LOG" 2>&1 &
   echo "$!" >"$WEB_PID_FILE"
   wait_for_url "$web_url" "$WEB_PID_FILE" "$WEB_LOG" "web server" 30
   echo "[service] web ready pid=$(cat "$WEB_PID_FILE")"
@@ -318,6 +320,12 @@ case "${1:-start}" in
   start-avamerg)
     start_avamerg
     ;;
+  start-tts)
+    start_tts
+    ;;
+  stop-tts)
+    stop_pid "TTS worker" "$TTS_PID_FILE"
+    ;;
   stop-avamerg)
     stop_pid "AvaMERG worker" "$AVAMERG_PID_FILE"
     ;;
@@ -366,7 +374,7 @@ case "${1:-start}" in
     tail -80 "$GAUSSIAN_RENDER_LOG" 2>/dev/null || true
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|logs|start-avamerg|stop-avamerg|start-deeptalk|stop-deeptalk|start-perception|stop-perception|start-gaussian-render|stop-gaussian-render}"
+    echo "Usage: $0 {start|stop|restart|status|logs|start-tts|stop-tts|start-avamerg|stop-avamerg|start-deeptalk|stop-deeptalk|start-perception|stop-perception|start-gaussian-render|stop-gaussian-render}"
     exit 2
     ;;
 esac

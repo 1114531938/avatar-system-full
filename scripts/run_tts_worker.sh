@@ -26,7 +26,9 @@ cd '$ROOT/EmotiVoice_runs/repo'
   --checkpoint g_00140000
 "
 
-exec apptainer exec --fakeroot --writable --nv \
+APPTAINER_FLAGS="${APPTAINER_FLAGS:---nv}"
+
+exec apptainer exec $APPTAINER_FLAGS \
   -B /scratch:/scratch,/home/svu:/home/svu \
   "$ROOT/containers/gaussianav_jammy" \
   bash -lc "$cmd"

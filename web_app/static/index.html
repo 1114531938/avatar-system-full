@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Avatar Web Studio</title>
-    <link rel="stylesheet" href="/static/style.css?v=viewer-20260425-avatars-01" />
+    <link rel="stylesheet" href="/static/style_commercial.css?v=commercial-20260529-01" />
   </head>
   <body>
     <main class="app-shell">
       <section class="hero">
         <div>
           <p class="eyebrow">Avatar Web Studio</p>
-          <h1>Voice to Avatar</h1>
+          <h1>Affective Avatar</h1>
         </div>
         <div class="status-pill" id="serverStatus">Ready</div>
       </section>
@@ -49,6 +49,16 @@
             <span>Avatar ID</span>
             <input id="avatarId" value="306" inputmode="numeric" />
           </label>
+
+          <label class="field">
+            <span>Voice</span>
+            <select id="ttsSpeaker"></select>
+          </label>
+          <div class="voice-preview">
+            <button id="ttsPreviewBtn" type="button">Voice Preview</button>
+            <span id="ttsPreviewStatus">Preview selected voice</span>
+            <audio id="ttsPreviewAudio" controls hidden></audio>
+          </div>
 
           <div class="recorder">
             <div class="meter">
@@ -137,6 +147,6 @@
       </section>
     </main>
 
-    <script type="module" src="/static/app.js?v=viewer-20260425-avatars-01"></script>
+    <script type="module" src="/static/app.js?v=tts-preview-20260530-01"></script>
   </body>
 </html>

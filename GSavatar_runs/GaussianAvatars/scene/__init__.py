@@ -75,15 +75,16 @@ class Scene:
         :param path: Path to colmap scene main folder.
         """
         self.model_path = args.model_path
+        self.load_model_path = getattr(args, "load_model_path", "") or self.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
 
         if load_iteration:
             if load_iteration == -1:
-                self.loaded_iter = searchForMaxIteration(os.path.join(self.model_path, "point_cloud"))
+                self.loaded_iter = searchForMaxIteration(os.path.join(self.load_model_path, "point_cloud"))
             else:
                 self.loaded_iter = load_iteration
-            print("Loading trained model at iteration {}".format(self.loaded_iter))
+            print("Loading trained model at iteration {} from {}".format(self.loaded_iter, self.load_model_path))
 
         # load dataset
         assert os.path.exists(args.source_path), "Source path does not exist: {}".format(args.source_path)
@@ -143,7 +144,7 @@ class Scene:
         # create gaussians
         if self.loaded_iter:
             self.gaussians.load_ply(
-                os.path.join(self.model_path,
+                os.path.join(self.load_model_path,
                             "point_cloud",
                             "iteration_" + str(self.loaded_iter),
                             "point_cloud.ply"),

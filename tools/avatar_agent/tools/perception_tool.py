@@ -14,6 +14,34 @@ class PerceptionTool:
     def __init__(self, config: dict):
         self.config = config
 
+    def _attach_multimodal_context(self, state) -> None:
+        input_video = getattr(state, "input_video", None)
+        if not input_video:
+            return
+        context = {
+            "input_video": input_video,
+            "video_frames_dir": getattr(state, "video_frames_dir", None),
+            "vision_policy": "local_explainable_fallback",
+            "non_sensitive_summary": (
+                "User video was captured for the Booth turn. "
+                "No race or ethnicity classification is performed."
+            ),
+        }
+        for path_value in [getattr(state, "perception_json", None), getattr(state, "task1_input_json", None)]:
+            if not path_value or not os.path.exists(path_value):
+                continue
+            try:
+                with open(path_value, "r", encoding="utf-8") as f:
+                    obj = json.load(f)
+                obj["multimodal_context"] = context
+                with open(path_value, "w", encoding="utf-8") as f:
+                    json.dump(obj, f, ensure_ascii=False, indent=2)
+            except Exception as exc:
+                log_path = os.path.join(state.log_dir, "perception.log")
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"[perception] failed to attach multimodal context: {exc}\n")
+
     def _resolve_outputs(self, state, out_dir: str, task1_out_dir: str) -> None:
         base = state.base_name
         task1_candidates = [
@@ -129,6 +157,7 @@ class PerceptionTool:
         os.makedirs(task1_out_dir, exist_ok=True)
 
         if self._try_worker(state, out_dir, task1_out_dir):
+            self._attach_multimodal_context(state)
             return
 
         py = os.path.join(venv, "bin/python")
@@ -158,3 +187,4 @@ class PerceptionTool:
         run_bash_in_container(cmd, container_image, os.path.join(state.log_dir, "perception.log"))
 
         self._resolve_outputs(state, out_dir, task1_out_dir)
+        self._attach_multimodal_context(state)

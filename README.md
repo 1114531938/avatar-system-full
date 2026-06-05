@@ -143,7 +143,7 @@ bash scripts/avatar_service.sh start
 默认端口：
 
 ```text
-7860  web
+7861  web
 8788  TTS worker
 8789  AvaMERG worker
 8790  DEEPTalk worker
@@ -193,12 +193,18 @@ bash scripts/avatar_service.sh restart
 
 或者单独 stop / start 对应 worker。
 
+如需继续使用 `7860`，可以显式覆盖端口：
+
+```bash
+PORT=7860 bash scripts/avatar_service.sh start
+```
+
 ## 6. Web 页面功能
 
 当前网页入口默认是：
 
 ```text
-http://localhost:7860
+http://localhost:7861
 ```
 
 页面支持：
@@ -387,7 +393,7 @@ ss -ltnp | grep 8792
 只改：
 
 - `web_app/static/index.html`
-- `web_app/static/style.css`
+- `web_app/static/style_commercial.css`
 - `web_app/static/app.js`
 
 通常：

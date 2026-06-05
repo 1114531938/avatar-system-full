@@ -21,6 +21,7 @@ def save_json(path: str, data: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description="End-to-end avatar pipeline orchestrator")
     parser.add_argument("--input_wav", required=True, help="Path to input wav")
+    parser.add_argument("--input_video", default=None, help="Optional user video path for Booth multimodal input")
     parser.add_argument("--avatar_id", default="306", help="Avatar media id, e.g. 306")
     parser.add_argument("--config", default="pipeline_config.yaml", help="YAML config path")
     parser.add_argument("--run_id", default=None, help="Optional run id")
@@ -39,6 +40,14 @@ def main():
         action="store_true",
         help="Collect wav/npz/manifest but skip final mp4 export.",
     )
+    parser.add_argument(
+        "--tts_speaker_id",
+        default=None,
+        help="Override EmotiVoice speaker id from the YAML config.",
+    )
+    parser.add_argument("--background", default=None, help="Optional Booth background id")
+    parser.add_argument("--session_id", default=None, help="Optional Booth session id")
+    parser.add_argument("--turn_id", default=None, help="Optional Booth turn id")
     args = parser.parse_args()
 
     with open(args.config, "r", encoding="utf-8") as f:
@@ -47,6 +56,8 @@ def main():
         config.setdefault("perception", {})["no_llm"] = True
     if args.no_video_export:
         config.setdefault("runtime", {})["export_video"] = False
+    if args.tts_speaker_id:
+        config.setdefault("tts", {})["speaker_id"] = str(args.tts_speaker_id).strip()
 
     input_wav = os.path.abspath(args.input_wav)
     if not os.path.exists(input_wav):
@@ -63,6 +74,7 @@ def main():
 
     state = PipelineState(
         input_wav=input_wav,
+        input_video=os.path.abspath(args.input_video) if args.input_video else None,
         avatar_id=str(args.avatar_id),
         base_name=base_name,
         run_id=run_id,
@@ -71,6 +83,12 @@ def main():
         prepare_only=args.prepare_only,
         launch_viewer=(not args.prepare_only),
     )
+    state.tts_speaker_id = str(config.get("tts", {}).get("speaker_id", ""))
+    state.selected_avatar_id = str(args.avatar_id)
+    state.selected_tts_speaker_id = state.tts_speaker_id
+    state.background = args.background
+    state.session_id = args.session_id
+    state.turn_id = args.turn_id
 
     state_path = os.path.join(run_dir, "state.json")
     manifest_path = os.path.join(run_dir, "manifest.json")
@@ -88,7 +106,16 @@ def main():
         "input_wav": final_state.input_wav,
         "avatar_id": final_state.avatar_id,
         "task1_reply_json": final_state.task1_reply_json,
+        "input_video": final_state.input_video,
+        "video_frames_dir": final_state.video_frames_dir,
+        "plan_json": final_state.plan_json,
+        "selected_avatar_id": final_state.selected_avatar_id,
+        "selected_tts_speaker_id": final_state.selected_tts_speaker_id,
+        "background": final_state.background,
+        "session_id": final_state.session_id,
+        "turn_id": final_state.turn_id,
         "reply_text": final_state.reply_text,
+        "tts_speaker_id": final_state.tts_speaker_id,
         "reply_wav": final_state.reply_wav,
         "deeptalk_npy": final_state.deeptalk_npy,
         "flame_motion_npz": final_state.flame_motion_npz,

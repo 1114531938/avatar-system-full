@@ -110,6 +110,9 @@ class GaussianModel:
         self.denom = denom
         self.optimizer.load_state_dict(opt_dict)
 
+    def get_attribute_offset(self, name):
+        return None
+
     @property
     def get_scaling(self):
         if self.binding is None:
@@ -119,7 +122,11 @@ class GaussianModel:
             if self.face_scaling is None:
                 self.select_mesh_by_timestep(0)
 
-            scaling = self.scaling_activation(self._scaling)
+            scaling_params = self._scaling
+            offset = self.get_attribute_offset("scaling")
+            if offset is not None:
+                scaling_params = scaling_params + offset
+            scaling = self.scaling_activation(scaling_params)
             return scaling * self.face_scaling[self.binding]
     
     @property
@@ -132,7 +139,11 @@ class GaussianModel:
                 self.select_mesh_by_timestep(0)
 
             # always need to normalize the rotation quaternions before chaining them
-            rot = self.rotation_activation(self._rotation)
+            rotation_params = self._rotation
+            offset = self.get_attribute_offset("rotation")
+            if offset is not None:
+                rotation_params = rotation_params + offset
+            rot = self.rotation_activation(rotation_params)
             face_orien_quat = self.rotation_activation(self.face_orien_quat[self.binding])
             return quat_xyzw_to_wxyz(quat_product(quat_wxyz_to_xyzw(face_orien_quat), quat_wxyz_to_xyzw(rot)))  # roma
             # return quaternion_multiply(face_orien_quat, rot)  # pytorch3d
@@ -146,18 +157,32 @@ class GaussianModel:
             if self.face_center is None:
                 self.select_mesh_by_timestep(0)
             
-            xyz = torch.bmm(self.face_orien_mat[self.binding], self._xyz[..., None]).squeeze(-1)
+            local_xyz = self._xyz
+            offset = self.get_attribute_offset("xyz")
+            if offset is not None:
+                local_xyz = local_xyz + offset
+            xyz = torch.bmm(self.face_orien_mat[self.binding], local_xyz[..., None]).squeeze(-1)
             return xyz * self.face_scaling[self.binding] + self.face_center[self.binding]
 
     @property
     def get_features(self):
         features_dc = self._features_dc
+        offset = self.get_attribute_offset("features_dc")
+        if offset is not None:
+            features_dc = features_dc + offset
         features_rest = self._features_rest
+        offset = self.get_attribute_offset("features_rest")
+        if offset is not None:
+            features_rest = features_rest + offset
         return torch.cat((features_dc, features_rest), dim=1)
     
     @property
     def get_opacity(self):
-        return self.opacity_activation(self._opacity)
+        opacity_params = self._opacity
+        offset = self.get_attribute_offset("opacity")
+        if offset is not None:
+            opacity_params = opacity_params + offset
+        return self.opacity_activation(opacity_params)
     
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)

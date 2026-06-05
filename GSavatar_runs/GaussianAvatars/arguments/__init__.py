@@ -50,6 +50,8 @@ class ModelParams(ParamGroup):
         self._source_path = ""  # Path to the source data set
         self._target_path = ""  # Path to the target data set for pose and expression transfer
         self._model_path = ""  # Path to the folder to save trained models
+        self._load_model_path = ""  # Optional existing model used only for initialization
+        self.load_iteration = 0  # 0 starts from scratch; -1 loads latest from load_model_path
         self._images = "images"
         self._resolution = -1
         self._white_background = False
@@ -58,12 +60,27 @@ class ModelParams(ParamGroup):
         self.bind_to_mesh = False
         self.disable_flame_static_offset = False
         self.not_finetune_flame_params = False
+        self.enable_micro_expression = False
+        self.micro_expression_anchor_count = 256
+        self.micro_expression_topk = 8
+        self.micro_expression_hidden_dim = 64
+        self.micro_expression_embed_dim = 32
+        self.micro_expression_head_mode = "shared"
+        self.micro_expression_appearance_mode = "dc"
+        self.micro_expression_use_deformation = True
+        self.micro_expression_position_scale = 0.01
+        self.micro_expression_scaling_scale = 0.05
+        self.micro_expression_opacity_scale = 0.1
+        self.micro_expression_rotation_scale = 0.05
+        self.micro_expression_appearance_scale = 0.03
         self.select_camera_id = -1
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
         g = super().extract(args)
         g.source_path = os.path.abspath(g.source_path)
+        if g.load_model_path:
+            g.load_model_path = os.path.abspath(g.load_model_path)
         return g
 
 class PipelineParams(ParamGroup):
@@ -106,6 +123,9 @@ class OptimizationParams(ParamGroup):
         self.lambda_dynamic_offset = 0.
         self.lambda_laplacian = 0.
         self.lambda_dynamic_offset_std = 0  #1.
+        self.micro_expression_lr = 5e-4
+        self.micro_expression_only = False
+        self.lambda_micro_expression_offset = 0.1
 
         super().__init__(parser, "Optimization Parameters")
 

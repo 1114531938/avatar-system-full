@@ -147,6 +147,11 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=550)
     parser.add_argument("--height", type=int, default=802)
     parser.add_argument("--sh_degree", type=int, default=3)
+    parser.add_argument(
+        "--disable_micro_expression",
+        action="store_true",
+        help="Render the base Gaussian avatar even when adjacent micro-expression weights exist.",
+    )
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--keep_frames", action="store_true")
     parser.add_argument(
@@ -223,7 +228,12 @@ def main() -> None:
         else:
             gaussians = GaussianModel(args.sh_degree)
 
-        gaussians.load_ply(point_path, has_target=False, motion_path=motion_path)
+        gaussians.load_ply(
+            point_path,
+            has_target=False,
+            motion_path=motion_path,
+            load_micro_expression=not args.disable_micro_expression,
+        )
         background = torch.tensor([1, 1, 1], dtype=torch.float32, device="cuda")
         if args.camera_json:
             cam = prepare_camera_from_three(args.width, args.height, Path(args.camera_json).resolve())

@@ -5,6 +5,10 @@ import { PLYLoader } from "/static/vendor/PLYLoader.js";
 const els = {
   avatarPreset: document.getElementById("avatarPreset"),
   avatarId: document.getElementById("avatarId"),
+  ttsSpeaker: document.getElementById("ttsSpeaker"),
+  ttsPreviewBtn: document.getElementById("ttsPreviewBtn"),
+  ttsPreviewStatus: document.getElementById("ttsPreviewStatus"),
+  ttsPreviewAudio: document.getElementById("ttsPreviewAudio"),
   apiKey: document.getElementById("apiKey"),
   baseUrl: document.getElementById("baseUrl"),
   modelName: document.getElementById("modelName"),
@@ -131,10 +135,37 @@ function avatarPresetLabel(item) {
   return parts.join(" · ");
 }
 
+function ttsSpeakerLabel(item) {
+  if (!item) return "";
+  return item.label || item.id || "";
+}
+
 function syncAvatarPresetFromInput() {
   const value = (els.avatarId.value || "").trim();
   const match = Array.from(els.avatarPreset.options).find((option) => option.value === value);
   els.avatarPreset.value = match ? value : "__custom__";
+}
+
+async function loadTtsSpeakers() {
+  try {
+    const response = await fetch("/api/tts_speakers");
+    if (!response.ok) return;
+    const payload = await response.json();
+    const speakers = Array.isArray(payload.speakers) ? payload.speakers : [];
+    const defaultSpeakerId = String(payload.default_speaker_id || "6224");
+    els.ttsSpeaker.innerHTML = "";
+    for (const speaker of speakers) {
+      const option = document.createElement("option");
+      option.value = String(speaker.id);
+      option.textContent = ttsSpeakerLabel(speaker);
+      els.ttsSpeaker.appendChild(option);
+    }
+    if (speakers.some((speaker) => String(speaker.id) === defaultSpeakerId)) {
+      els.ttsSpeaker.value = defaultSpeakerId;
+    }
+  } catch (error) {
+    console.warn("Failed to load TTS speakers", error);
+  }
 }
 
 async function loadAvatarOptions() {
@@ -184,6 +215,39 @@ els.avatarPreset.addEventListener("change", () => {
 
 els.avatarId.addEventListener("input", () => {
   syncAvatarPresetFromInput();
+});
+
+els.ttsPreviewBtn.addEventListener("click", async () => {
+  const speakerId = els.ttsSpeaker.value || "6224";
+  els.ttsPreviewBtn.disabled = true;
+  els.ttsPreviewStatus.textContent = "Generating preview...";
+  try {
+    const response = await fetch("/api/tts_preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speaker_id: speakerId }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      let message = detail || "Preview failed";
+      try {
+        const payload = JSON.parse(detail);
+        message = payload.detail || message;
+      } catch {
+        // Keep the raw response text when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    const payload = await response.json();
+    els.ttsPreviewAudio.src = `${payload.audio_url}?t=${Date.now()}`;
+    els.ttsPreviewAudio.hidden = false;
+    els.ttsPreviewStatus.textContent = `Preview ready: ${payload.speaker_id}`;
+    await els.ttsPreviewAudio.play();
+  } catch (error) {
+    els.ttsPreviewStatus.textContent = `Preview failed: ${error.message || error}`;
+  } finally {
+    els.ttsPreviewBtn.disabled = false;
+  }
 });
 
 els.saveSettingsBtn.addEventListener("click", async () => {
@@ -315,6 +379,7 @@ els.submitBtn.addEventListener("click", async () => {
   const formData = new FormData();
   formData.append("audio", file, file.name);
   formData.append("avatar_id", els.avatarId.value || "306");
+  formData.append("tts_speaker_id", els.ttsSpeaker.value || "6224");
   formData.append("no_llm", els.noLlm.checked ? "true" : "false");
   formData.append("prepare_only", els.prepareOnly.checked ? "true" : "false");
   formData.append("no_video_export", els.noVideo.checked ? "true" : "false");
@@ -445,7 +510,7 @@ function renderJob(payload) {
   els.paths.textContent = pathLines.join("\n");
 }
 
-Promise.all([loadSettings(), loadAvatarOptions()]).finally(() => {
+Promise.all([loadSettings(), loadAvatarOptions(), loadTtsSpeakers()]).finally(() => {
   syncAvatarPresetFromInput();
 });
 

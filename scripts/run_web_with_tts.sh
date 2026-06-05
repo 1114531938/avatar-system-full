@@ -49,5 +49,5 @@ else
   fi
 fi
 
-echo "[service] starting web server on ${HOST:-0.0.0.0}:${PORT:-7860}"
+echo "[service] starting web server on ${HOST:-0.0.0.0}:${PORT:-7861}"
 bash "$ROOT/scripts/run_web.sh"

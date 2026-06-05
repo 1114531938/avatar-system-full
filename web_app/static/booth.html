@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3D Emotional Avatar Booth</title>
+    <link rel="stylesheet" href="/static/booth.css?v=booth-mvp-20260603-01" />
+  </head>
+  <body>
+    <div class="booth-shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark"></span>
+          <span>
+            <strong>3D Emotional Avatar Booth</strong>
+            <small>AI video call demo</small>
+          </span>
+        </a>
+        <nav class="top-actions">
+          <button id="historyBtn" type="button">History</button>
+          <button id="exportBtn" type="button">Export Video</button>
+          <a href="/studio">Research Studio</a>
+          <button id="logoutBtn" type="button" hidden>Logout</button>
+        </nav>
+      </header>
+
+      <main class="layout">
+        <section class="stage-panel">
+          <div class="avatar-stage" id="avatarStage">
+            <div class="stage-copy">
+              <p>Live emotional companion</p>
+              <h1>Talk to a 3D Avatar with voice and video.</h1>
+            </div>
+            <video id="replyVideo" playsinline controls hidden></video>
+            <div id="stageEmpty" class="stage-empty">
+              <span>Waiting for your first turn</span>
+            </div>
+            <video id="userPreview" class="user-preview" playsinline muted autoplay></video>
+          </div>
+
+          <div class="call-controls">
+            <button id="cameraBtn" type="button">Enable Camera</button>
+            <button id="recordBtn" class="primary" type="button" disabled>Record</button>
+            <button id="stopBtn" type="button" disabled>Stop</button>
+            <button id="sendBtn" type="button" disabled>Send Turn</button>
+            <button id="replayBtn" type="button" disabled>Replay Reply</button>
+          </div>
+
+          <div class="status-row">
+            <div>
+              <strong id="statusText">Ready</strong>
+              <span id="detailText">Login, enable camera, then record a turn.</span>
+            </div>
+            <audio id="audioPreview" controls hidden></audio>
+          </div>
+        </section>
+
+        <aside class="side-panel">
+          <section id="authPanel" class="tool-panel">
+            <h2>Account</h2>
+            <label>
+              <span>Username</span>
+              <input id="usernameInput" autocomplete="username" placeholder="demo_user" />
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="passwordInput" type="password" autocomplete="current-password" placeholder="8+ characters" />
+            </label>
+            <div class="split-actions">
+              <button id="loginBtn" type="button" class="primary">Login</button>
+              <button id="registerBtn" type="button">Register</button>
+            </div>
+            <details>
+              <summary>Password tools</summary>
+              <label>
+                <span>New password</span>
+                <input id="newPasswordInput" type="password" autocomplete="new-password" />
+              </label>
+              <div class="split-actions">
+                <button id="changePasswordBtn" type="button">Change</button>
+                <button id="resetPasswordBtn" type="button">Reset Token</button>
+              </div>
+              <input id="resetTokenInput" placeholder="reset token" />
+              <button id="confirmResetBtn" type="button">Confirm Reset</button>
+            </details>
+          </section>
+
+          <section class="tool-panel">
+            <h2>Booth Setup</h2>
+            <label>
+              <span>Session title</span>
+              <input id="sessionTitle" value="Emotional Avatar Booth Demo" />
+            </label>
+            <label>
+              <span>Background</span>
+              <select id="backgroundSelect"></select>
+            </label>
+            <label>
+              <span>Background image</span>
+              <input id="backgroundImageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            </label>
+            <button id="newSessionBtn" type="button">New Session</button>
+            <div id="matchCard" class="match-card">Avatar and voice will be selected automatically.</div>
+          </section>
+
+          <section class="tool-panel conversation-panel">
+            <div class="panel-head">
+              <h2>Conversation</h2>
+              <span id="turnCount">0 turns</span>
+            </div>
+            <div id="conversationList" class="conversation-list"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="historyDrawer" class="drawer" hidden>
+      <div class="drawer-card">
+        <div class="panel-head">
+          <h2>Session History</h2>
+          <button id="closeHistoryBtn" type="button">Close</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </div>
+
+    <script src="/static/booth.js?v=booth-mvp-20260603-01"></script>
+  </body>
+</html>

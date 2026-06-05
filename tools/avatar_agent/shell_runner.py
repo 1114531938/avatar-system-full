@@ -55,6 +55,7 @@ def run_bash(command: str, log_file: Optional[str] = None, check: bool = True) -
 
 def build_apptainer_exec_command(command: str, image: str) -> str:
     q = shlex.quote
+    flags = os.environ.get("APPTAINER_FLAGS", "--nv")
     thread_limited_command = (
         "export OMP_NUM_THREADS=1; "
         "export OPENBLAS_NUM_THREADS=1; "
@@ -64,7 +65,7 @@ def build_apptainer_exec_command(command: str, image: str) -> str:
         f"{command}"
     )
     return (
-        "apptainer exec --fakeroot --writable --nv "
+        f"apptainer exec {flags} "
         "-B /scratch:/scratch,/home/svu:/home/svu "
         f"{q(image)} bash -lc {q(thread_limited_command)}"
     )

@@ -52,6 +52,16 @@ fi
 mkdir -p "$ASSET_ROOT"
 cp "$POINT_PATH" "$ASSET_ROOT/point_cloud.ply"
 
+POINT_DIR="$(dirname "$POINT_PATH")"
+MICRO_WEIGHTS="$POINT_DIR/micro_expression.pth"
+MICRO_CONFIG="$POINT_DIR/micro_expression_config.json"
+if [[ -f "$MICRO_WEIGHTS" && -f "$MICRO_CONFIG" ]]; then
+  cp "$MICRO_WEIGHTS" "$ASSET_ROOT/micro_expression.pth"
+  cp "$MICRO_CONFIG" "$ASSET_ROOT/micro_expression_config.json"
+else
+  rm -f "$ASSET_ROOT/micro_expression.pth" "$ASSET_ROOT/micro_expression_config.json"
+fi
+
 CMD=(
   python "$ROOT/tools/avatar_agent/tools/build_template_from_vhap.py"
   --canonical "$CANONICAL_PATH"
@@ -66,3 +76,7 @@ echo "[register_avatar_asset] registered asset:"
 echo "  avatar_id:    $AVATAR_ID"
 echo "  point_cloud:  $ASSET_ROOT/point_cloud.ply"
 echo "  flame_param:  $ASSET_ROOT/flame_param.npz"
+if [[ -f "$ASSET_ROOT/micro_expression.pth" ]]; then
+  echo "  micro model:  $ASSET_ROOT/micro_expression.pth"
+  echo "  micro config: $ASSET_ROOT/micro_expression_config.json"
+fi

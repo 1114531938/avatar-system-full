@@ -3,21 +3,24 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import threading
 import hashlib
 import ast
+import base64
 import struct
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,11 +32,19 @@ STATIC_ROOT = WEB_ROOT / "static"
 OUTPUT_ROOT = ROOT / "outputs"
 UPLOAD_ROOT = OUTPUT_ROOT / "web_uploads"
 CACHE_ROOT = ROOT / "cache" / "pipeline"
+TTS_PREVIEW_ROOT = OUTPUT_ROOT / "tts_previews"
+BOOTH_ROOT = OUTPUT_ROOT / "booth"
+BOOTH_UPLOAD_ROOT = BOOTH_ROOT / "uploads"
+BOOTH_EXPORT_ROOT = BOOTH_ROOT / "exports"
+BOOTH_DB = BOOTH_ROOT / "booth.sqlite3"
 SCRIPT = ROOT / "scripts" / "run_agent.sh"
 
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+TTS_PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+BOOTH_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+BOOTH_EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Avatar Web Studio")
 app.mount("/static", StaticFiles(directory=str(STATIC_ROOT)), name="static")
@@ -41,9 +52,11 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUT_ROOT)), name="outputs")
 
 jobs: dict[str, dict[str, Any]] = {}
 viewer_exports: dict[str, dict[str, Any]] = {}
+booth_exports: dict[str, dict[str, Any]] = {}
 jobs_lock = threading.Lock()
 exports_lock = threading.Lock()
 settings_lock = threading.Lock()
+db_lock = threading.Lock()
 runtime_settings: dict[str, str] = {
     "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
     "OPENAI_BASE_URL": os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -51,10 +64,192 @@ runtime_settings: dict[str, str] = {
 }
 
 
+def _now_iso() -> str:
+    return datetime.now().replace(microsecond=0).isoformat()
+
+
+def _db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(BOOTH_DB), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_booth_db() -> None:
+    with db_lock, _db() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT NOT NULL UNIQUE,
+              password_hash TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+              token TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS reset_tokens (
+              token TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              used_at TEXT,
+              FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS booth_sessions (
+              id TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              background_id TEXT NOT NULL,
+              background_url TEXT,
+              export_status TEXT NOT NULL DEFAULT 'idle',
+              export_video_url TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS booth_turns (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              user_id INTEGER NOT NULL,
+              run_id TEXT,
+              status TEXT NOT NULL,
+              input_wav TEXT,
+              input_video_path TEXT,
+              input_video_url TEXT,
+              background_id TEXT,
+              match_result TEXT,
+              reply_text TEXT,
+              reply_video_url TEXT,
+              manifest_json TEXT,
+              error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(session_id) REFERENCES booth_sessions(id),
+              FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            """
+        )
+
+
+_init_booth_db()
+
+
+def _hash_password(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 260000)
+    return f"pbkdf2_sha256${salt}${digest.hex()}"
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        scheme, salt, digest = password_hash.split("$", 2)
+    except ValueError:
+        return False
+    if scheme != "pbkdf2_sha256":
+        return False
+    return secrets.compare_digest(_hash_password(password, salt), password_hash)
+
+
+def _validate_username(username: str) -> str:
+    username = username.strip()
+    if not re.match(r"^[A-Za-z0-9_.@-]{3,64}$", username):
+        raise HTTPException(status_code=400, detail="Username must be 3-64 characters using letters, numbers, _, ., @, or -.")
+    return username
+
+
+def _validate_password(password: str) -> str:
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    return password
+
+
+def _user_payload(row: sqlite3.Row) -> dict[str, Any]:
+    return {"id": int(row["id"]), "username": row["username"], "created_at": row["created_at"]}
+
+
+def _create_auth_session(user_id: int) -> tuple[str, str]:
+    token = secrets.token_urlsafe(32)
+    created_at = _now_iso()
+    expires_at = (datetime.now() + timedelta(days=7)).replace(microsecond=0).isoformat()
+    with db_lock, _db() as conn:
+        conn.execute(
+            "INSERT INTO auth_sessions(token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user_id, created_at, expires_at),
+        )
+    return token, expires_at
+
+
+def _get_current_user(session_token: str | None) -> dict[str, Any]:
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Login required.")
+    with db_lock, _db() as conn:
+        row = conn.execute(
+            """
+            SELECT users.* FROM auth_sessions
+            JOIN users ON users.id = auth_sessions.user_id
+            WHERE auth_sessions.token = ? AND auth_sessions.expires_at > ?
+            """,
+            (session_token, _now_iso()),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return _user_payload(row)
+
+
+def _require_user(request: Request) -> dict[str, Any]:
+    return _get_current_user(request.cookies.get("session_token"))
+
+
+def _set_session_cookie(response: JSONResponse, token: str, expires_at: str) -> None:
+    expires = datetime.fromisoformat(expires_at)
+    max_age = max(0, int((expires - datetime.now()).total_seconds()))
+    response.set_cookie(
+        "session_token",
+        token,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+    )
+
+
+def _clear_session_cookie(response: JSONResponse) -> None:
+    response.delete_cookie("session_token", httponly=True, samesite="lax")
+
+
 class RuntimeSettings(BaseModel):
     openai_api_key: str = ""
     openai_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "openai/gpt-oss-120b:free"
+
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ResetPasswordRequest(BaseModel):
+    username: str
+
+
+class ResetPasswordConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class TTSPreviewRequest(BaseModel):
+    speaker_id: str = "6224"
+    text: str = "你好，我是你的情感数字人助手，很高兴今天和你见面。"
+    style_prompt: str = "Warm, natural, conversational speech."
 
 
 def _load_avatar_labels() -> dict[str, str]:
@@ -97,6 +292,309 @@ def _list_available_avatars() -> list[dict[str, str]]:
         label = labels.get(avatar_id, f"Avatar {avatar_id}")
         avatars.append({"id": avatar_id, "label": label})
     return avatars
+
+
+def _speaker_wiki_rows() -> dict[str, dict[str, str]]:
+    wiki_path = ROOT / "EmotiVoice_runs" / "repo" / "data" / "youdao" / "text" / "README.md"
+    rows: dict[str, dict[str, str]] = {}
+    if not wiki_path.exists():
+        return rows
+
+    pattern = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|")
+    for line in wiki_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = pattern.match(line)
+        if not match:
+            continue
+        speaker_id, name, gender, description = [part.strip() for part in match.groups()]
+        if not speaker_id.isdigit():
+            continue
+        rows[speaker_id] = {
+            "name": name,
+            "gender": gender,
+            "description": description,
+        }
+    return rows
+
+
+def _list_tts_speakers() -> list[dict[str, str]]:
+    speaker_path = ROOT / "EmotiVoice_runs" / "repo" / "data" / "youdao" / "text" / "speaker2"
+    wiki = _speaker_wiki_rows()
+    if not speaker_path.exists():
+        return [{"id": "6224", "label": "6224 · dave k · M"}]
+
+    speakers: list[dict[str, str]] = []
+    for line in speaker_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        speaker_id = line.strip()
+        if not speaker_id:
+            continue
+        meta = wiki.get(speaker_id, {})
+        name = meta.get("name", "")
+        gender = meta.get("gender", "")
+        description = meta.get("description", "")
+        label_parts = [speaker_id]
+        if name:
+            label_parts.append(name)
+        if gender:
+            label_parts.append(gender)
+        if description:
+            label_parts.append(description)
+        speakers.append(
+            {
+                "id": speaker_id,
+                "label": " · ".join(label_parts),
+                "name": name,
+                "gender": gender,
+                "description": description,
+            }
+        )
+    return speakers
+
+
+def _booth_backgrounds() -> list[dict[str, str]]:
+    return [
+        {
+            "id": "soft_studio",
+            "label": "Soft Studio",
+            "style": "calm",
+            "css": "linear-gradient(135deg, #f8fafc 0%, #dbeafe 48%, #ccfbf1 100%)",
+        },
+        {
+            "id": "midnight_lab",
+            "label": "Midnight Lab",
+            "style": "focused",
+            "css": "linear-gradient(135deg, #101827 0%, #21435a 52%, #0f766e 100%)",
+        },
+        {
+            "id": "paper_room",
+            "label": "Paper Room",
+            "style": "warm",
+            "css": "linear-gradient(135deg, #fff7ed 0%, #e0f2fe 55%, #f8fafc 100%)",
+        },
+    ]
+
+
+def _avatar_tags(avatar_id: str, label: str) -> dict[str, str]:
+    numeric = int(avatar_id) if str(avatar_id).isdigit() else 0
+    presentation = "feminine" if numeric % 2 else "neutral"
+    if any(term in label.lower() for term in ["female", "woman", "165"]):
+        presentation = "feminine"
+    elif any(term in label.lower() for term in ["male", "man", "074", "306"]):
+        presentation = "masculine"
+    return {
+        "presentation": presentation,
+        "age_band": "adult",
+        "style": "empathetic",
+        "demo_label": label,
+    }
+
+
+def _speaker_tags(speaker: dict[str, str]) -> dict[str, str]:
+    label = " ".join(str(v) for v in speaker.values()).lower()
+    gender = str(speaker.get("gender", "")).lower()
+    presentation = "neutral"
+    if gender.startswith("f") or "female" in label or "woman" in label:
+        presentation = "feminine"
+    elif gender.startswith("m") or "male" in label or "man" in label:
+        presentation = "masculine"
+    timbre = "mid"
+    if any(term in label for term in ["low", "deep", "bass"]):
+        timbre = "low"
+    elif any(term in label for term in ["high", "bright"]):
+        timbre = "high"
+    return {"presentation": presentation, "voice_timbre": timbre, "style": "warm"}
+
+
+def _ffmpeg_bin() -> str:
+    ffmpeg = ROOT / "tools" / "ffmpeg-git-20240629-amd64-static" / "ffmpeg"
+    return str(ffmpeg) if ffmpeg.exists() else "ffmpeg"
+
+
+def _ffprobe_bin() -> str:
+    ffprobe = ROOT / "tools" / "ffmpeg-git-20240629-amd64-static" / "ffprobe"
+    return str(ffprobe) if ffprobe.exists() else "ffprobe"
+
+
+def _extract_video_frames(video_path: Path, frames_dir: Path, max_frames: int = 3) -> list[Path]:
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    frame_pattern = frames_dir / "frame_%02d.jpg"
+    command = [
+        _ffmpeg_bin(),
+        "-y",
+        "-i",
+        str(video_path),
+        "-vf",
+        "fps=1,scale=512:-1",
+        "-frames:v",
+        str(max_frames),
+        str(frame_pattern),
+    ]
+    subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    return sorted(frames_dir.glob("frame_*.jpg"))[:max_frames]
+
+
+def _call_vision_model(frame_paths: list[Path]) -> dict[str, Any]:
+    vision_model = os.environ.get("VISION_MODEL", "").strip()
+    if not vision_model or not frame_paths:
+        return {"enabled": bool(vision_model), "status": "not_called"}
+    with settings_lock:
+        api_key = runtime_settings.get("OPENAI_API_KEY", "")
+        base_url = runtime_settings.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    if not api_key:
+        return {"enabled": True, "status": "skipped", "reason": "OPENAI_API_KEY is not configured."}
+
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                "Return strict JSON with non-sensitive demo tags for avatar matching. "
+                "Do not infer race, ethnicity, identity, health, or other sensitive traits. "
+                "Allowed keys: presentation, apparent_age_band, lighting, mood, confidence, notes."
+            ),
+        }
+    ]
+    for frame_path in frame_paths:
+        encoded = base64.b64encode(frame_path.read_bytes()).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
+            }
+        )
+    payload = json.dumps(
+        {
+            "model": vision_model,
+            "temperature": 0,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        text = result["choices"][0]["message"]["content"]
+        text = re.sub(r"^```json\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
+        tags = json.loads(text)
+        if not isinstance(tags, dict):
+            tags = {"notes": str(tags)}
+        return {"enabled": True, "status": "ok", "model": vision_model, "tags": tags}
+    except Exception as exc:
+        return {"enabled": True, "status": "failed", "model": vision_model, "reason": str(exc)}
+
+
+def _infer_local_match(input_wav: Path | None, input_video: Path | None, frame_paths: list[Path] | None = None) -> dict[str, Any]:
+    avatars = _list_available_avatars()
+    speakers = _list_tts_speakers()
+    vision = _call_vision_model(frame_paths or [])
+    avatar = avatars[0] if avatars else {"id": "306", "label": "Avatar 306"}
+    speaker = next((item for item in speakers if str(item.get("id")) == "6224"), speakers[0] if speakers else {"id": "6224"})
+    presentation_hint = ((vision.get("tags") or {}).get("presentation") or "").lower() if isinstance(vision.get("tags"), dict) else ""
+    if presentation_hint:
+        for candidate in avatars:
+            tags = _avatar_tags(str(candidate["id"]), str(candidate.get("label", candidate["id"])))
+            if tags.get("presentation") == presentation_hint:
+                avatar = candidate
+                break
+        for candidate in speakers:
+            tags = _speaker_tags(candidate)
+            if tags.get("presentation") == presentation_hint:
+                speaker = candidate
+                break
+    avatar_tag = _avatar_tags(str(avatar["id"]), str(avatar.get("label", avatar["id"])))
+    speaker_tag = _speaker_tags(speaker)
+    return {
+        "avatar_id": str(avatar["id"]),
+        "tts_speaker_id": str(speaker["id"]),
+        "strategy": "local_explainable_fallback",
+        "vision": vision,
+        "signals": {
+            "audio_file": input_wav.name if input_wav else None,
+            "video_file": input_video.name if input_video else None,
+            "frame_count": len(frame_paths or []),
+        },
+        "avatar_tags": avatar_tag,
+        "voice_tags": speaker_tag,
+        "reason": (
+            "Selected from available demo assets using non-sensitive presentation/style tags. "
+            "No race or ethnicity classification is performed."
+        ),
+    }
+
+
+def _emotivoice_phonemes(text: str) -> str:
+    root = ROOT / "EmotiVoice_runs" / "repo"
+    py = root / ".EmotiVoice" / "bin" / "python"
+    frontend = root / "frontend.py"
+    if not os.path.lexists(py):
+        raise FileNotFoundError(f"EmotiVoice python not found: {py}")
+    if not frontend.exists():
+        raise FileNotFoundError(f"EmotiVoice frontend.py not found: {frontend}")
+
+    temp_input = TTS_PREVIEW_ROOT / f"preview_input_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
+    temp_input.write_text(text.strip() + "\n", encoding="utf-8")
+    container_image = ROOT / "containers" / "gaussianav_jammy"
+    inner_cmd = (
+        f"cd {shlex.quote(str(root))} && "
+        f"{shlex.quote(str(py))} {shlex.quote(str(frontend))} {shlex.quote(str(temp_input))}"
+    )
+    apptainer_flags = os.environ.get("APPTAINER_FLAGS", "--nv")
+    command = (
+        f"apptainer exec {apptainer_flags} "
+        "-B /scratch:/scratch,/home/svu:/home/svu "
+        f"{shlex.quote(str(container_image))} bash -lc "
+        f"{shlex.quote(inner_cmd)}"
+    )
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+    finally:
+        temp_input.unlink(missing_ok=True)
+
+    phonemes = " ".join(proc.stdout.strip().split())
+    if not phonemes:
+        raise RuntimeError(f"EmotiVoice frontend returned empty phonemes: {proc.stderr}")
+    return phonemes
+
+
+def _tts_worker_synthesize(test_file: Path, output_wav: Path, timeout: float = 120) -> dict[str, Any]:
+    url = os.environ.get("TTS_WORKER_URL", "http://127.0.0.1:8788").rstrip("/")
+    try:
+        with urllib.request.urlopen(f"{url}/health", timeout=2) as resp:
+            health = json.loads(resp.read().decode("utf-8"))
+        if not health.get("ok"):
+            raise RuntimeError(f"TTS worker is unhealthy: {health}")
+    except Exception as exc:
+        raise RuntimeError(f"TTS worker is not available at {url}. Start it with scripts/avatar_service.sh start.") from exc
+
+    payload = json.dumps({"test_file": str(test_file), "output_wav": str(output_wav)}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{url}/synthesize",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as resp:
+        result = json.loads(resp.read().decode("utf-8"))
+    if not result.get("ok"):
+        raise RuntimeError(f"TTS preview synthesis failed: {result}")
+    if not output_wav.exists():
+        raise FileNotFoundError(f"TTS preview output was not created: {output_wav}")
+    return result
 
 
 class ViewerExportRequest(BaseModel):
@@ -152,16 +650,21 @@ def _is_web_run_dir(path: Path) -> bool:
     return (path / "state.json").exists() or (path / "manifest.json").exists()
 
 
-def _prune_output_runs(keep: int = 5) -> None:
+def _prune_output_runs(keep: int = 5, preserve_uploads: set[Path] | None = None) -> None:
     keep = max(1, int(keep))
+    preserved = {path.resolve() for path in (preserve_uploads or set())}
     run_dirs = [path for path in OUTPUT_ROOT.iterdir() if _is_web_run_dir(path)]
     run_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     kept_names = {path.name for path in run_dirs[:keep]}
     for old_dir in run_dirs[keep:]:
         shutil.rmtree(old_dir, ignore_errors=True)
         upload_wav = UPLOAD_ROOT / f"{old_dir.name}.wav"
+        if upload_wav.resolve() in preserved:
+            continue
         upload_wav.unlink(missing_ok=True)
     for upload_wav in UPLOAD_ROOT.glob("web_*.wav"):
+        if upload_wav.resolve() in preserved:
+            continue
         if upload_wav.stem not in kept_names:
             upload_wav.unlink(missing_ok=True)
 
@@ -181,15 +684,17 @@ def _cache_key(
     no_llm: bool,
     no_video_export: bool,
     prepare_only: bool,
+    tts_speaker_id: str,
     settings: dict[str, str],
 ) -> str:
     cache_obj = {
-        "schema": 1,
+        "schema": 2,
         "audio_sha256": audio_sha256,
         "avatar_id": str(avatar_id),
         "no_llm": bool(no_llm),
         "no_video_export": bool(no_video_export),
         "prepare_only": bool(prepare_only),
+        "tts_speaker_id": str(tts_speaker_id),
         "openai_base_url": settings.get("OPENAI_BASE_URL", ""),
         "llm_model": "" if no_llm else settings.get("LLM_MODEL", ""),
     }
@@ -222,6 +727,7 @@ def _restore_cached_run(
     run_id: str,
     run_dir: Path,
     avatar_id: str,
+    tts_speaker_id: str,
     input_wav: Path,
     prepare_only: bool,
 ) -> bool:
@@ -249,6 +755,7 @@ def _restore_cached_run(
     state = {
         "input_wav": str(input_wav),
         "avatar_id": str(avatar_id),
+        "tts_speaker_id": str(tts_speaker_id),
         "base_name": run_id,
         "run_id": run_id,
         "run_dir": str(run_dir),
@@ -304,6 +811,7 @@ def _restore_cached_run(
         "avatar_id": str(avatar_id),
         "task1_reply_json": state["task1_reply_json"],
         "reply_text": state["reply_text"],
+        "tts_speaker_id": str(tts_speaker_id),
         "reply_wav": reply_wav,
         "deeptalk_npy": deeptalk_npy,
         "flame_motion_npz": flame_npz,
@@ -575,11 +1083,123 @@ def _watch_process(run_id: str, proc: subprocess.Popen[str], log_path: Path) -> 
         except Exception as exc:
             with log_path.open("a", encoding="utf-8") as log:
                 log.write(f"\n[cache] store failed: {exc}\n")
+    with jobs_lock:
+        booth_context = jobs.get(run_id, {}).get("booth")
+    if booth_context:
+        _finalize_booth_turn(run_id)
 
 
 @app.get("/")
 def index() -> FileResponse:
+    if os.environ.get("BOOTH_DEFAULT_ROUTE") == "1":
+        return FileResponse(STATIC_ROOT / "booth.html")
     return FileResponse(STATIC_ROOT / "index.html")
+
+
+@app.get("/booth")
+def booth() -> FileResponse:
+    return FileResponse(STATIC_ROOT / "booth.html")
+
+
+@app.get("/studio")
+def studio() -> FileResponse:
+    return FileResponse(STATIC_ROOT / "index.html")
+
+
+@app.post("/api/auth/register")
+def auth_register(request: AuthRequest) -> JSONResponse:
+    username = _validate_username(request.username)
+    password = _validate_password(request.password)
+    created_at = _now_iso()
+    try:
+        with db_lock, _db() as conn:
+            cur = conn.execute(
+                "INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, _hash_password(password), created_at),
+            )
+            user_id = int(cur.lastrowid)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="Username already exists.") from exc
+    token, expires_at = _create_auth_session(user_id)
+    payload = {"ok": True, "user": {"id": user_id, "username": username, "created_at": created_at}}
+    response = JSONResponse(payload)
+    _set_session_cookie(response, token, expires_at)
+    return response
+
+
+@app.post("/api/auth/login")
+def auth_login(request: AuthRequest) -> JSONResponse:
+    username = _validate_username(request.username)
+    with db_lock, _db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if not row or not _verify_password(request.password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    token, expires_at = _create_auth_session(int(row["id"]))
+    response = JSONResponse({"ok": True, "user": _user_payload(row)})
+    _set_session_cookie(response, token, expires_at)
+    return response
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request) -> JSONResponse:
+    token = request.cookies.get("session_token")
+    if token:
+        with db_lock, _db() as conn:
+            conn.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))
+    response = JSONResponse({"ok": True})
+    _clear_session_cookie(response)
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request) -> JSONResponse:
+    return JSONResponse({"ok": True, "user": _require_user(request)})
+
+
+@app.post("/api/auth/change_password")
+def auth_change_password(request: Request, payload: ChangePasswordRequest) -> JSONResponse:
+    user = _require_user(request)
+    new_password = _validate_password(payload.new_password)
+    with db_lock, _db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        if not row or not _verify_password(payload.current_password, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect.")
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_hash_password(new_password), user["id"]))
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/auth/reset_password/request")
+def auth_reset_request(payload: ResetPasswordRequest) -> JSONResponse:
+    username = _validate_username(payload.username)
+    token = secrets.token_urlsafe(32)
+    created_at = _now_iso()
+    expires_at = (datetime.now() + timedelta(hours=1)).replace(microsecond=0).isoformat()
+    with db_lock, _db() as conn:
+        row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        if row:
+            conn.execute(
+                "INSERT INTO reset_tokens(token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (token, int(row["id"]), created_at, expires_at),
+            )
+            print(f"[booth_auth] password reset token for {username}: {token}", flush=True)
+            return JSONResponse({"ok": True, "reset_token": token, "expires_at": expires_at})
+    return JSONResponse({"ok": True, "reset_token": None})
+
+
+@app.post("/api/auth/reset_password/confirm")
+def auth_reset_confirm(payload: ResetPasswordConfirmRequest) -> JSONResponse:
+    new_password = _validate_password(payload.new_password)
+    with db_lock, _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM reset_tokens WHERE token = ? AND used_at IS NULL AND expires_at > ?",
+            (payload.token, _now_iso()),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=400, detail="Reset token is invalid or expired.")
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_hash_password(new_password), int(row["user_id"])))
+        conn.execute("UPDATE reset_tokens SET used_at = ? WHERE token = ?", (_now_iso(), payload.token))
+        conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (int(row["user_id"]),))
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/settings")
@@ -613,14 +1233,72 @@ def get_avatars() -> JSONResponse:
     return JSONResponse({"avatars": _list_available_avatars()})
 
 
-@app.post("/api/jobs")
-async def create_job(
-    audio: UploadFile = File(...),
-    avatar_id: str = Form("306"),
-    no_llm: bool = Form(False),
-    no_video_export: bool = Form(False),
-    prepare_only: bool = Form(False),
-) -> JSONResponse:
+@app.get("/api/tts_speakers")
+def get_tts_speakers() -> JSONResponse:
+    speakers = _list_tts_speakers()
+    return JSONResponse({"speakers": speakers, "default_speaker_id": "6224"})
+
+
+@app.post("/api/tts_preview")
+def create_tts_preview(request: TTSPreviewRequest) -> JSONResponse:
+    speaker_id = request.speaker_id.strip() or "6224"
+    text = request.text.strip() or "你好，我是你的情感数字人助手，很高兴今天和你见面。"
+    style_prompt = request.style_prompt.strip() or "Warm, natural, conversational speech."
+
+    valid_speaker_ids = {speaker["id"] for speaker in _list_tts_speakers()}
+    if valid_speaker_ids and speaker_id not in valid_speaker_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown EmotiVoice speaker id: {speaker_id}")
+
+    cache_obj = {"speaker_id": speaker_id, "text": text, "style_prompt": style_prompt, "schema": 1}
+    preview_key = hashlib.sha256(
+        json.dumps(cache_obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:16]
+    preview_dir = TTS_PREVIEW_ROOT / preview_key
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    test_file = preview_dir / "input.txt"
+    output_wav = preview_dir / "preview.wav"
+
+    if not output_wav.exists():
+        try:
+            phonemes = _emotivoice_phonemes(text)
+            test_file.write_text(
+                f"{speaker_id}|{style_prompt}|<sos/eos> {phonemes} <sos/eos>|{text}\n",
+                encoding="utf-8",
+            )
+            _tts_worker_synthesize(test_file, output_wav)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "speaker_id": speaker_id,
+            "text": text,
+            "audio_url": f"/outputs/tts_previews/{preview_key}/preview.wav",
+            "input_txt": str(test_file),
+            "output_wav": str(output_wav),
+        }
+    )
+
+
+def _safe_upload_suffix(filename: str, default: str) -> str:
+    suffix = Path(filename or "").suffix.lower()
+    if not suffix or len(suffix) > 12 or not re.match(r"^\.[A-Za-z0-9]+$", suffix):
+        return default
+    return suffix
+
+
+def _start_pipeline_job(
+    *,
+    input_wav: Path,
+    source_filename: str,
+    avatar_id: str,
+    tts_speaker_id: str,
+    no_llm: bool,
+    no_video_export: bool,
+    prepare_only: bool,
+    booth_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     with settings_lock:
         active_settings = runtime_settings.copy()
 
@@ -634,28 +1312,27 @@ async def create_job(
             ),
         )
 
-    filename = audio.filename or "recording.wav"
-    if not filename.lower().endswith(".wav"):
-        raise HTTPException(status_code=400, detail="Please upload or record a .wav file.")
+    tts_speaker_id = str(tts_speaker_id).strip() or "6224"
+    valid_speaker_ids = {speaker["id"] for speaker in _list_tts_speakers()}
+    if valid_speaker_ids and tts_speaker_id not in valid_speaker_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown EmotiVoice speaker id: {tts_speaker_id}")
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = _safe_slug(Path(filename).stem)
-    run_id = f"web_{stem}_{stamp}"
+    stem = _safe_slug(Path(source_filename).stem)
+    run_prefix = "booth" if booth_context else "web"
+    run_id = f"{run_prefix}_{stem}_{stamp}"
     run_dir = OUTPUT_ROOT / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
-    _prune_output_runs(keep=5)
+    _prune_output_runs(keep=5, preserve_uploads={input_wav})
 
-    upload_path = UPLOAD_ROOT / f"{run_id}.wav"
-    with upload_path.open("wb") as f:
-        shutil.copyfileobj(audio.file, f)
-
-    audio_sha256 = _sha256_file(upload_path)
+    audio_sha256 = _sha256_file(input_wav)
     cache_key = _cache_key(
         audio_sha256=audio_sha256,
         avatar_id=str(avatar_id),
         no_llm=bool(no_llm),
         no_video_export=bool(no_video_export),
         prepare_only=bool(prepare_only),
+        tts_speaker_id=tts_speaker_id,
         settings=active_settings,
     )
 
@@ -665,7 +1342,8 @@ async def create_job(
             run_id=run_id,
             run_dir=run_dir,
             avatar_id=str(avatar_id),
-            input_wav=upload_path,
+            tts_speaker_id=tts_speaker_id,
+            input_wav=input_wav,
             prepare_only=bool(prepare_only),
         )
         if restored:
@@ -673,22 +1351,28 @@ async def create_job(
                 jobs[run_id] = {
                     "process": None,
                     "created_at": stamp,
-                    "input_wav": str(upload_path),
+                    "input_wav": str(input_wav),
                     "avatar_id": str(avatar_id),
+                    "tts_speaker_id": tts_speaker_id,
                     "return_code": 0,
                     "cache_key": cache_key,
                     "cache_hit": True,
+                    "booth": booth_context,
                 }
-            return JSONResponse(_job_payload(run_id))
+            if booth_context:
+                _finalize_booth_turn(run_id)
+            return _job_payload(run_id)
 
     web_log = run_dir / "web_stdout.log"
     cmd = [
         "bash",
         str(SCRIPT),
-        str(upload_path),
+        str(input_wav),
         str(avatar_id),
         "--run_id",
         run_id,
+        "--tts_speaker_id",
+        tts_speaker_id,
     ]
     if prepare_only:
         cmd.append("--prepare_only")
@@ -696,6 +1380,15 @@ async def create_job(
         cmd.append("--no_video_export")
     if no_llm:
         cmd.append("--no_llm")
+    if booth_context:
+        if booth_context.get("input_video_path"):
+            cmd.extend(["--input_video", str(booth_context["input_video_path"])])
+        if booth_context.get("background_id"):
+            cmd.extend(["--background", str(booth_context["background_id"])])
+        if booth_context.get("session_id"):
+            cmd.extend(["--session_id", str(booth_context["session_id"])])
+        if booth_context.get("turn_id"):
+            cmd.extend(["--turn_id", str(booth_context["turn_id"])])
 
     env = os.environ.copy()
     env.setdefault("HF_HOME", str(ROOT / "cache" / "hf"))
@@ -708,6 +1401,8 @@ async def create_job(
 
     with web_log.open("w", encoding="utf-8") as log:
         log.write("$ " + " ".join(cmd) + "\n\n")
+        if booth_context:
+            log.write("[booth] " + json.dumps(booth_context, ensure_ascii=False) + "\n\n")
 
     proc = subprocess.Popen(
         cmd,
@@ -723,16 +1418,509 @@ async def create_job(
         jobs[run_id] = {
             "process": proc,
             "created_at": stamp,
-            "input_wav": str(upload_path),
+            "input_wav": str(input_wav),
             "avatar_id": str(avatar_id),
+            "tts_speaker_id": tts_speaker_id,
             "return_code": None,
             "cache_key": cache_key,
             "cache_hit": False,
+            "booth": booth_context,
         }
     thread = threading.Thread(target=_watch_process, args=(run_id, proc, web_log), daemon=True)
     thread.start()
+    return _job_payload(run_id)
 
-    return JSONResponse(_job_payload(run_id))
+
+@app.post("/api/jobs")
+async def create_job(
+    audio: UploadFile = File(...),
+    avatar_id: str = Form("306"),
+    tts_speaker_id: str = Form("6224"),
+    no_llm: bool = Form(False),
+    no_video_export: bool = Form(False),
+    prepare_only: bool = Form(False),
+) -> JSONResponse:
+    filename = audio.filename or "recording.wav"
+    if not filename.lower().endswith(".wav"):
+        raise HTTPException(status_code=400, detail="Please upload or record a .wav file.")
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = _safe_slug(Path(filename).stem)
+    upload_path = UPLOAD_ROOT / f"web_{stem}_{stamp}.wav"
+    with upload_path.open("wb") as f:
+        shutil.copyfileobj(audio.file, f)
+    return JSONResponse(
+        _start_pipeline_job(
+            input_wav=upload_path,
+            source_filename=filename,
+            avatar_id=str(avatar_id),
+            tts_speaker_id=str(tts_speaker_id),
+            no_llm=bool(no_llm),
+            no_video_export=bool(no_video_export),
+            prepare_only=bool(prepare_only),
+        )
+    )
+
+
+def _parse_json_field(value: str | None, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return default
+
+
+def _booth_turn_payload(row: sqlite3.Row) -> dict[str, Any]:
+    payload = dict(row)
+    payload["match_result"] = _parse_json_field(payload.get("match_result"), {})
+    payload["manifest"] = _parse_json_field(payload.pop("manifest_json", None), {})
+    return payload
+
+
+def _booth_session_payload(row: sqlite3.Row, include_turns: bool = False) -> dict[str, Any]:
+    payload = dict(row)
+    if include_turns:
+        with db_lock, _db() as conn:
+            turns = conn.execute(
+                "SELECT * FROM booth_turns WHERE session_id = ? ORDER BY created_at ASC",
+                (payload["id"],),
+            ).fetchall()
+        payload["turns"] = [_booth_turn_payload(turn) for turn in turns]
+    return payload
+
+
+def _require_booth_session(session_id: str, user_id: int) -> sqlite3.Row:
+    with db_lock, _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM booth_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Booth session not found.")
+    return row
+
+
+def _booth_background_color(background_id: str) -> str:
+    return {
+        "soft_studio": "0xDCEDEA",
+        "midnight_lab": "0x101827",
+        "paper_room": "0xF7EFE4",
+    }.get(background_id, "0xDCEDEA")
+
+
+def _media_has_audio(path: Path) -> bool:
+    command = [
+        _ffprobe_bin(),
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_type",
+        "-of",
+        "csv=p=0",
+        str(path),
+    ]
+    try:
+        proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=20)
+    except Exception:
+        return False
+    return "audio" in (proc.stdout or "")
+
+
+def _normalize_booth_segment(source: Path, output: Path, background_id: str, background_path: Path | None) -> tuple[bool, str]:
+    source = source.resolve()
+    output = output.resolve()
+    has_audio = _media_has_audio(source)
+    if background_path and background_path.exists():
+        command = [
+            _ffmpeg_bin(),
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(background_path),
+            "-i",
+            str(source),
+        ]
+        if not has_audio:
+            command.extend(["-f", "lavfi", "-t", "0.1", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"])
+        command.extend([
+            "-filter_complex",
+            (
+                "[0:v]scale=1280:720:force_original_aspect_ratio=increase,"
+                "crop=1280:720,setsar=1[bg];"
+                "[1:v]scale=1120:630:force_original_aspect_ratio=decrease,setsar=1[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]"
+            ),
+            "-map",
+            "[v]",
+        ])
+        if has_audio:
+            command.extend(["-map", "1:a:0", "-c:a", "aac", "-b:a", "160k"])
+        else:
+            command.extend(["-map", "2:a:0", "-c:a", "aac"])
+    else:
+        color = _booth_background_color(background_id)
+        command = [
+            _ffmpeg_bin(),
+            "-y",
+            "-i",
+            str(source),
+        ]
+        if not has_audio:
+            command.extend(["-f", "lavfi", "-t", "0.1", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"])
+        command.extend([
+            "-filter_complex",
+            (
+                f"color=c={color}:s=1280x720[bg];"
+                "[0:v]scale=1120:630:force_original_aspect_ratio=decrease,setsar=1[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]"
+            ),
+            "-map",
+            "[v]",
+        ])
+        if has_audio:
+            command.extend(["-map", "0:a:0", "-c:a", "aac", "-b:a", "160k"])
+        else:
+            command.extend(["-map", "1:a:0", "-c:a", "aac"])
+    command.extend(["-c:v", "libx264", "-preset", "veryfast", "-r", "25", "-shortest", str(output)])
+    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    log = "$ " + " ".join(command) + "\n\n" + (proc.stdout or "")
+    return proc.returncode == 0 and output.exists(), log
+
+
+def _finalize_booth_turn(run_id: str) -> None:
+    with jobs_lock:
+        booth_context = jobs.get(run_id, {}).get("booth") or {}
+    turn_id = booth_context.get("turn_id")
+    session_id = booth_context.get("session_id")
+    if not turn_id or not session_id:
+        return
+
+    payload = _job_payload(run_id)
+    manifest = payload.get("manifest") or {}
+    urls = payload.get("artifact_urls") or {}
+    status = payload.get("status", "unknown")
+    error = None
+    if status == "failed":
+        state = payload.get("state") or {}
+        error = manifest.get("error") or state.get("error") or payload.get("log_tail", "")[-1200:]
+    reply_video_url = urls.get("output_video")
+    reply_text = manifest.get("reply_text")
+    now = _now_iso()
+    with db_lock, _db() as conn:
+        conn.execute(
+            """
+            UPDATE booth_turns
+            SET status = ?, reply_text = ?, reply_video_url = ?, manifest_json = ?, error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, reply_text, reply_video_url, json.dumps(manifest, ensure_ascii=False), error, now, turn_id),
+        )
+        conn.execute("UPDATE booth_sessions SET updated_at = ? WHERE id = ?", (now, session_id))
+
+
+@app.get("/api/booth/config")
+def booth_config(request: Request) -> JSONResponse:
+    user = None
+    try:
+        user = _require_user(request)
+    except HTTPException:
+        user = None
+    return JSONResponse(
+        {
+            "ok": True,
+            "user": user,
+            "backgrounds": _booth_backgrounds(),
+            "avatars": [
+                {**avatar, "tags": _avatar_tags(str(avatar["id"]), str(avatar.get("label", avatar["id"])))}
+                for avatar in _list_available_avatars()
+            ],
+            "speakers": [
+                {**speaker, "tags": _speaker_tags(speaker)}
+                for speaker in _list_tts_speakers()
+            ],
+            "vision_model_configured": bool(os.environ.get("VISION_MODEL")),
+        }
+    )
+
+
+@app.post("/api/booth/sessions")
+def create_booth_session(request: Request, title: str = Form("Emotional Avatar Booth"), background_id: str = Form("soft_studio")) -> JSONResponse:
+    user = _require_user(request)
+    session_id = secrets.token_urlsafe(12)
+    now = _now_iso()
+    with db_lock, _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO booth_sessions(id, user_id, title, background_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, user["id"], title.strip() or "Emotional Avatar Booth", background_id.strip() or "soft_studio", now, now),
+        )
+        row = conn.execute("SELECT * FROM booth_sessions WHERE id = ?", (session_id,)).fetchone()
+    return JSONResponse({"ok": True, "session": _booth_session_payload(row, include_turns=True)})
+
+
+@app.get("/api/booth/sessions")
+def list_booth_sessions(request: Request) -> JSONResponse:
+    user = _require_user(request)
+    with db_lock, _db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM booth_sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50",
+            (user["id"],),
+        ).fetchall()
+    return JSONResponse({"ok": True, "sessions": [_booth_session_payload(row) for row in rows]})
+
+
+@app.get("/api/booth/sessions/{session_id}")
+def get_booth_session(request: Request, session_id: str) -> JSONResponse:
+    user = _require_user(request)
+    row = _require_booth_session(session_id, int(user["id"]))
+    with db_lock, _db() as conn:
+        running = conn.execute(
+            "SELECT run_id FROM booth_turns WHERE session_id = ? AND status IN ('running', 'unknown')",
+            (session_id,),
+        ).fetchall()
+    for item in running:
+        if item["run_id"]:
+            job_payload = _job_payload(item["run_id"])
+            if job_payload.get("status") in {"done", "failed"}:
+                _finalize_booth_turn(item["run_id"])
+    with db_lock, _db() as conn:
+        fresh = conn.execute("SELECT * FROM booth_sessions WHERE id = ?", (session_id,)).fetchone()
+    return JSONResponse({"ok": True, "session": _booth_session_payload(fresh, include_turns=True)})
+
+
+@app.post("/api/booth/sessions/{session_id}/turns")
+async def create_booth_turn(
+    request: Request,
+    session_id: str,
+    audio: UploadFile = File(...),
+    video: Optional[UploadFile] = File(None),
+    background_image: Optional[UploadFile] = File(None),
+    background_id: str = Form("soft_studio"),
+    no_llm: bool = Form(False),
+) -> JSONResponse:
+    user = _require_user(request)
+    _require_booth_session(session_id, int(user["id"]))
+    filename = audio.filename or "booth_recording.wav"
+    if not filename.lower().endswith(".wav"):
+        raise HTTPException(status_code=400, detail="Booth audio must be a .wav file.")
+
+    turn_id = secrets.token_urlsafe(12)
+    turn_dir = BOOTH_UPLOAD_ROOT / session_id / turn_id
+    turn_dir.mkdir(parents=True, exist_ok=True)
+    input_wav = turn_dir / "input.wav"
+    with input_wav.open("wb") as f:
+        shutil.copyfileobj(audio.file, f)
+
+    input_video_path: Path | None = None
+    input_video_url: str | None = None
+    if video and video.filename:
+        suffix = _safe_upload_suffix(video.filename, ".webm")
+        input_video_path = turn_dir / f"input_video{suffix}"
+        with input_video_path.open("wb") as f:
+            shutil.copyfileobj(video.file, f)
+        input_video_url = _outputs_url(str(input_video_path))
+    frame_paths = _extract_video_frames(input_video_path, turn_dir / "video_frames") if input_video_path else []
+
+    background_url: str | None = None
+    if background_image and background_image.filename:
+        suffix = _safe_upload_suffix(background_image.filename, ".jpg")
+        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise HTTPException(status_code=400, detail="Background image must be jpg, png, or webp.")
+        background_path = turn_dir / f"background{suffix}"
+        with background_path.open("wb") as f:
+            shutil.copyfileobj(background_image.file, f)
+        background_url = _outputs_url(str(background_path))
+
+    match = _infer_local_match(input_wav, input_video_path, frame_paths)
+    avatar_id = str(match.get("avatar_id") or "306")
+    tts_speaker_id = str(match.get("tts_speaker_id") or "6224")
+    with settings_lock:
+        no_llm_effective = bool(no_llm) or not bool(runtime_settings.get("OPENAI_API_KEY"))
+
+    now = _now_iso()
+    with db_lock, _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO booth_turns(
+              id, session_id, user_id, status, input_wav, input_video_path, input_video_url,
+              background_id, match_result, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                turn_id,
+                session_id,
+                user["id"],
+                "queued",
+                str(input_wav),
+                str(input_video_path) if input_video_path else None,
+                input_video_url,
+                background_id,
+                json.dumps(match, ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            "UPDATE booth_sessions SET background_id = ?, background_url = COALESCE(?, background_url), updated_at = ? WHERE id = ?",
+            (background_id, background_url, now, session_id),
+        )
+
+    try:
+        job_payload = _start_pipeline_job(
+            input_wav=input_wav,
+            source_filename=filename,
+            avatar_id=avatar_id,
+            tts_speaker_id=tts_speaker_id,
+            no_llm=no_llm_effective,
+            no_video_export=False,
+            prepare_only=False,
+            booth_context={
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "input_video_path": str(input_video_path) if input_video_path else None,
+                "background_id": background_id,
+                "background_url": background_url,
+                "match_result": match,
+            },
+        )
+    except Exception as exc:
+        with db_lock, _db() as conn:
+            conn.execute(
+                "UPDATE booth_turns SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+                ("failed", str(exc), _now_iso(), turn_id),
+            )
+        raise
+
+    with db_lock, _db() as conn:
+        conn.execute(
+            "UPDATE booth_turns SET status = ?, run_id = ?, updated_at = ? WHERE id = ?",
+            (job_payload.get("status", "running"), job_payload.get("run_id"), _now_iso(), turn_id),
+        )
+        row = conn.execute("SELECT * FROM booth_turns WHERE id = ?", (turn_id,)).fetchone()
+    return JSONResponse({"ok": True, "turn": _booth_turn_payload(row), "job": job_payload})
+
+
+def _run_booth_export(session_id: str, user_id: int, export_id: str) -> None:
+    export_dir = BOOTH_EXPORT_ROOT / session_id / export_id
+    export_dir.mkdir(parents=True, exist_ok=True)
+    list_path = export_dir / "inputs.txt"
+    out_video = export_dir / "conversation.mp4"
+    log_path = export_dir / "export.log"
+    with db_lock, _db() as conn:
+        session = conn.execute(
+            "SELECT * FROM booth_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+        turns = conn.execute(
+            "SELECT * FROM booth_turns WHERE session_id = ? AND user_id = ? ORDER BY created_at ASC",
+            (session_id, user_id),
+        ).fetchall()
+
+    video_paths: list[Path] = []
+    for turn in turns:
+        if turn["input_video_path"] and Path(turn["input_video_path"]).exists():
+            video_paths.append(Path(turn["input_video_path"]))
+        manifest = _parse_json_field(turn["manifest_json"], {})
+        reply_path = manifest.get("output_video")
+        if reply_path and Path(reply_path).exists():
+            video_paths.append(Path(reply_path))
+
+    with db_lock, _db() as conn:
+        conn.execute("UPDATE booth_sessions SET export_status = ?, updated_at = ? WHERE id = ?", ("running", _now_iso(), session_id))
+
+    if not video_paths:
+        with db_lock, _db() as conn:
+            conn.execute("UPDATE booth_sessions SET export_status = ?, updated_at = ? WHERE id = ?", ("failed", _now_iso(), session_id))
+        return
+
+    with list_path.open("w", encoding="utf-8") as f:
+        for path in video_paths:
+            f.write(f"file '{str(path).replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}'\n")
+
+    normalized: list[Path] = []
+    log_chunks: list[str] = []
+    background_path = None
+    if session and session["background_url"]:
+        candidate = OUTPUT_ROOT / str(session["background_url"]).removeprefix("/outputs/")
+        if candidate.exists():
+            background_path = candidate
+    background_id = str(session["background_id"] if session else "soft_studio")
+    for index, source in enumerate(video_paths):
+        segment = export_dir / f"segment_{index:03d}.mp4"
+        ok, log_text = _normalize_booth_segment(source, segment, background_id, background_path)
+        log_chunks.append(log_text)
+        if ok:
+            normalized.append(segment)
+
+    if not normalized:
+        status = "failed"
+        log_path.write_text("\n\n".join(log_chunks) or "No exportable video segments.", encoding="utf-8")
+        url = None
+        with db_lock, _db() as conn:
+            conn.execute(
+                "UPDATE booth_sessions SET export_status = ?, export_video_url = ?, updated_at = ? WHERE id = ?",
+                (status, url, _now_iso(), session_id),
+            )
+        return
+
+    with list_path.open("w", encoding="utf-8") as f:
+        for path in normalized:
+            safe_path = str(path).replace("'", "'\\''")
+            f.write(f"file '{safe_path}'\n")
+
+    command = [
+        _ffmpeg_bin(),
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(list_path),
+        "-c",
+        "copy",
+        str(out_video),
+    ]
+    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    log_path.write_text("\n\n".join(log_chunks + ["$ " + " ".join(command), proc.stdout or ""]), encoding="utf-8")
+    status = "done" if proc.returncode == 0 and out_video.exists() else "failed"
+    url = _outputs_url(str(out_video)) if status == "done" else None
+    with db_lock, _db() as conn:
+        conn.execute(
+            "UPDATE booth_sessions SET export_status = ?, export_video_url = ?, updated_at = ? WHERE id = ?",
+            (status, url, _now_iso(), session_id),
+        )
+    with exports_lock:
+        booth_exports[f"{session_id}:{export_id}"] = {
+            "session_id": session_id,
+            "export_id": export_id,
+            "status": status,
+            "output_video_url": url,
+            "log_path": str(log_path),
+        }
+
+
+@app.post("/api/booth/sessions/{session_id}/export")
+def export_booth_session(request: Request, session_id: str) -> JSONResponse:
+    user = _require_user(request)
+    _require_booth_session(session_id, int(user["id"]))
+    export_id = f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    with exports_lock:
+        booth_exports[f"{session_id}:{export_id}"] = {
+            "session_id": session_id,
+            "export_id": export_id,
+            "status": "queued",
+            "output_video_url": None,
+        }
+    thread = threading.Thread(target=_run_booth_export, args=(session_id, int(user["id"]), export_id), daemon=True)
+    thread.start()
+    return JSONResponse({"ok": True, "export_id": export_id, "status": "queued"})
 
 
 @app.get("/api/jobs/{run_id}")
@@ -994,8 +2182,9 @@ def start_viewer_export(run_id: str, request: ViewerExportRequest) -> JSONRespon
       --camera_json {q(str(camera_json))} \
       --ffmpeg {q(str(ffmpeg))}
     """
+    apptainer_flags = os.environ.get("APPTAINER_FLAGS", "--nv")
     command = (
-        "apptainer exec --fakeroot --writable --nv "
+        f"apptainer exec {apptainer_flags} "
         "-B /scratch:/scratch,/home/svu:/home/svu "
         f"{q(str(container_image))} bash -lc {q(inner_cmd)}"
     )

@@ -105,7 +105,22 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
     with torch.no_grad():
         if dataset.bind_to_mesh:
             # gaussians = FlameGaussianModel(dataset.sh_degree, dataset.disable_flame_static_offset)
-            gaussians = FlameGaussianModel(dataset.sh_degree)
+            gaussians = FlameGaussianModel(
+                dataset.sh_degree,
+                enable_micro_expression=bool(getattr(dataset, "enable_micro_expression", False)),
+                micro_expression_anchor_count=getattr(dataset, "micro_expression_anchor_count", 256) or 256,
+                micro_expression_topk=getattr(dataset, "micro_expression_topk", 8) or 8,
+                micro_expression_hidden_dim=getattr(dataset, "micro_expression_hidden_dim", 64) or 64,
+                micro_expression_embed_dim=getattr(dataset, "micro_expression_embed_dim", 32) or 32,
+                micro_expression_head_mode=getattr(dataset, "micro_expression_head_mode", "shared") or "shared",
+                micro_expression_appearance_mode=getattr(dataset, "micro_expression_appearance_mode", "dc") or "dc",
+                micro_expression_use_deformation=getattr(dataset, "micro_expression_use_deformation", True),
+                micro_expression_position_scale=getattr(dataset, "micro_expression_position_scale", 0.01),
+                micro_expression_scaling_scale=getattr(dataset, "micro_expression_scaling_scale", 0.05),
+                micro_expression_opacity_scale=getattr(dataset, "micro_expression_opacity_scale", 0.1),
+                micro_expression_rotation_scale=getattr(dataset, "micro_expression_rotation_scale", 0.05),
+                micro_expression_appearance_scale=getattr(dataset, "micro_expression_appearance_scale", 0.03),
+            )
         else:
             gaussians = GaussianModel(dataset.sh_degree)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)

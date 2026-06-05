@@ -27,7 +27,9 @@ cd '$ROOT/perception_layer'
   --ser_model '$SER_MODEL'
 "
 
-exec apptainer exec --fakeroot --writable --nv \
+APPTAINER_FLAGS="${APPTAINER_FLAGS:---nv}"
+
+exec apptainer exec $APPTAINER_FLAGS \
   -B /scratch:/scratch,/home/svu:/home/svu \
   "$ROOT/containers/gaussianav_jammy" \
   bash -lc "$cmd"
