@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <subject_id> <avatar_id> [--model PATH] [--point-path PATH] [--canonical PATH] [--tracked PATH]"

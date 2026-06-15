@@ -5,9 +5,8 @@ import json
 import os
 from types import SimpleNamespace
 
-import yaml
-
 from manifest_utils import save_json
+from pipeline.config import load_pipeline_config
 from tools.artifact_export_tool import ArtifactExportTool
 
 
@@ -18,8 +17,7 @@ def main() -> None:
     parser.add_argument("--no_video_export", action="store_true")
     args = parser.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_pipeline_config(args.config)
 
     run_dir = os.path.abspath(args.run_dir)
     state_path = os.path.join(run_dir, "state.json")

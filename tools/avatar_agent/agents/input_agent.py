@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from manifest_utils import find_first_value, load_json, save_json
+from pipeline.config import project_path
 from tools.perception_tool import PerceptionTool
 
 
@@ -26,7 +27,7 @@ class InputAgent:
         frames_dir.mkdir(parents=True, exist_ok=True)
         state.video_frames_dir = str(frames_dir)
 
-        ffmpeg = Path("/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg")
+        ffmpeg = project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")
         ffmpeg_bin = str(ffmpeg) if ffmpeg.exists() else "ffmpeg"
         frame_pattern = frames_dir / "frame_%02d.jpg"
         cmd = [

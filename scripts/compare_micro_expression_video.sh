@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 GAUSS_ROOT="$ROOT/GSavatar_runs/GaussianAvatars"
 GAUSS_PY="$GAUSS_ROOT/.GSavatar_glibc/bin/python"
 EXPORTER="$ROOT/tools/avatar_agent/export_gaussian_video.py"

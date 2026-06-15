@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from pipeline.config import project_path
 from shell_runner import latest_match, run_bash
 
 
@@ -109,10 +110,10 @@ class DEEPTalkTool:
         export MKL_NUM_THREADS=1
         export NUMEXPR_NUM_THREADS=1
         export TOKENIZERS_PARALLELISM=false
-        export HF_HOME={q(env_cfg.get("HF_HOME", "/scratch/e1554543/avatar_system_full/cache/hf"))}
-        export XDG_CACHE_HOME={q(env_cfg.get("XDG_CACHE_HOME", "/scratch/e1554543/avatar_system_full/cache/xdg"))}
-        export MODELSCOPE_CACHE={q(env_cfg.get("MODELSCOPE_CACHE", "/scratch/e1554543/avatar_system_full/cache/modelscope"))}
-        export PATH=/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static:$PATH
+        export HF_HOME={q(env_cfg.get("HF_HOME", str(project_path("cache", "hf"))))}
+        export XDG_CACHE_HOME={q(env_cfg.get("XDG_CACHE_HOME", str(project_path("cache", "xdg"))))}
+        export MODELSCOPE_CACHE={q(env_cfg.get("MODELSCOPE_CACHE", str(project_path("cache", "modelscope"))))}
+        export PATH={q(str(project_path("tools", "ffmpeg-git-20240629-amd64-static")))}:$PATH
         mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$MODELSCOPE_CACHE"
         cd {q(root)}
         {q(py)} {q(infer_script)} --audio_path {q(state.reply_wav)} --output_npy {q(run_npy_path)}

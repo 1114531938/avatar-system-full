@@ -1,34 +1,34 @@
 paths:
-  perception_root: /scratch/e1554543/avatar_system_full/perception_layer
-  perception_venv: /scratch/e1554543/avatar_system_full/perception_layer/.perception
-  perception_out_dir: /scratch/e1554543/avatar_system_full/perception_layer/results/merged
-  perception_task1_out_dir: /scratch/e1554543/avatar_system_full/perception_layer/results/task1
+  perception_root: ${PROJECT_ROOT}/perception_layer
+  perception_venv: ${PROJECT_ROOT}/perception_layer/.perception
+  perception_out_dir: ${PROJECT_ROOT}/perception_layer/results/merged
+  perception_task1_out_dir: ${PROJECT_ROOT}/perception_layer/results/task1
 
-  avamerg_root: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline
-  avamerg_venv: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/.avamerg38
-  avamerg_reply_out_dir: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/outputs/infer_custom
+  avamerg_root: ${PROJECT_ROOT}/AvaMERG_runs/AvaMERG-Pipeline
+  avamerg_venv: ${PROJECT_ROOT}/AvaMERG_runs/AvaMERG-Pipeline/.avamerg38
+  avamerg_reply_out_dir: ${PROJECT_ROOT}/AvaMERG_runs/AvaMERG-Pipeline/outputs/infer_custom
 
-  emotivoice_root: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo
-  emotivoice_venv: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/.EmotiVoice
-  emotivoice_input_dir: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/input
-  emotivoice_frontend_py: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/frontend.py
-  json_to_emotivoice_script: /scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/json_to_emotivoice_input.py
-  emotivoice_output_wav_glob: /scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/*.wav
+  emotivoice_root: ${PROJECT_ROOT}/EmotiVoice_runs/repo
+  emotivoice_venv: ${PROJECT_ROOT}/EmotiVoice_runs/repo/.EmotiVoice
+  emotivoice_input_dir: ${PROJECT_ROOT}/EmotiVoice_runs/input
+  emotivoice_frontend_py: ${PROJECT_ROOT}/EmotiVoice_runs/repo/frontend.py
+  json_to_emotivoice_script: ${PROJECT_ROOT}/AvaMERG_runs/AvaMERG-Pipeline/json_to_emotivoice_input.py
+  emotivoice_output_wav_glob: ${PROJECT_ROOT}/EmotiVoice_runs/repo/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/*.wav
 
-  deeptalk_root: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk
-  deeptalk_venv: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/.deeptalk39
-  deeptalk_output_npy: /scratch/e1554543/avatar_system_full/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk/outputs/params/1.npy
-  deeptalk_merge_script: /scratch/e1554543/avatar_system_full/wav_to_flame/deeptalk_to_demo_flame_param.py
+  deeptalk_root: ${PROJECT_ROOT}/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk
+  deeptalk_venv: ${PROJECT_ROOT}/wav_to_flame/DEEPTalk_runs/.deeptalk39
+  deeptalk_output_npy: ${PROJECT_ROOT}/wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk/outputs/params/1.npy
+  deeptalk_merge_script: ${PROJECT_ROOT}/wav_to_flame/deeptalk_to_demo_flame_param.py
 
-  gaussian_root: /scratch/e1554543/avatar_system_full/GSavatar_runs/GaussianAvatars
-  gaussian_venv: /scratch/e1554543/avatar_system_full/GSavatar_runs/GaussianAvatars/.GSavatar_glibc
-  gaussian_container_image: /scratch/e1554543/avatar_system_full/containers/gaussianav_jammy
+  gaussian_root: ${PROJECT_ROOT}/GSavatar_runs/GaussianAvatars
+  gaussian_venv: ${PROJECT_ROOT}/GSavatar_runs/GaussianAvatars/.GSavatar_glibc
+  gaussian_container_image: ${PROJECT_ROOT}/containers/gaussianav_jammy
 
 env:
-  HF_HOME: /scratch/e1554543/avatar_system_full/cache/hf
-  XDG_CACHE_HOME: /scratch/e1554543/avatar_system_full/cache/xdg
-  MODELSCOPE_CACHE: /scratch/e1554543/avatar_system_full/cache/modelscope
-  NLTK_DATA: /scratch/e1554543/avatar_system_full/cache/nltk_data
+  HF_HOME: ${PROJECT_ROOT}/cache/hf
+  XDG_CACHE_HOME: ${PROJECT_ROOT}/cache/xdg
+  MODELSCOPE_CACHE: ${PROJECT_ROOT}/cache/modelscope
+  NLTK_DATA: ${PROJECT_ROOT}/cache/nltk_data
   OPENAI_BASE_URL: https://openrouter.ai/api/v1
   LLM_MODEL: openai/gpt-oss-120b:free
 
@@ -76,5 +76,5 @@ merge:
   zero_translation: true
 
 runtime:
-  run_root: /scratch/e1554543/avatar_system_full/outputs
+  run_root: ${PROJECT_ROOT}/outputs
   viewer_detached: true

@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 
-ROOT = Path("/scratch/e1554543/avatar_system_full")
+ROOT = Path(os.environ.get("AVATAR_SYSTEM_ROOT", "/scratch/e1554543/avatar_system_full"))
 WEB_ROOT = ROOT / "web_app"
 STATIC_ROOT = WEB_ROOT / "static"
 OUTPUT_ROOT = ROOT / "outputs"

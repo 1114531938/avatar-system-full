@@ -13,6 +13,11 @@ import numpy as np
 import torch
 from PIL import Image
 
+try:
+    from pipeline.config import project_path
+except ModuleNotFoundError:
+    project_path = None
+
 
 @dataclass
 class PipelineConfig:
@@ -197,8 +202,13 @@ def main() -> None:
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     ffmpeg = args.ffmpeg
-    if not Path(ffmpeg).exists() and Path("/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg").exists():
-        ffmpeg = "/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg"
+    fallback_ffmpeg = (
+        project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")
+        if project_path is not None
+        else Path("/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg")
+    )
+    if not Path(ffmpeg).exists() and fallback_ffmpeg.exists():
+        ffmpeg = str(fallback_ffmpeg)
 
     mux_audio_path = audio_path
     if args.audio_filter.strip():

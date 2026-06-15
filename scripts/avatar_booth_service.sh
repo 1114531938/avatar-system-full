@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 export PORT="${PORT:-7862}"
 export DEPB_ROOT="${DEPB_ROOT:-$ROOT/3DEPB_runs/3DEPB}"
 export WEB_SCRIPT="${WEB_SCRIPT:-$ROOT/scripts/run_3depb.sh}"

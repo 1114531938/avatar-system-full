@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 INVENTORY="$ROOT/GSavatar_runs/GaussianAvatars/datasets/nersemble_preprocessed/nersemble_subjects.tsv"
 BASE_AVATAR_ID=2001
 MODEL_SUFFIX="gaussian_train"

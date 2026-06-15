@@ -25,6 +25,15 @@ If the deployment path changes, update scripts that currently hard-code:
 /scratch/e1554543/avatar_system_full
 ```
 
+Most first-party scripts and the avatar agent also support:
+
+```bash
+export AVATAR_SYSTEM_ROOT=/your/deploy/path/avatar_system_full
+```
+
+`tools/avatar_agent/pipeline_config.yaml` uses `${PROJECT_ROOT}` placeholders
+that are expanded from `AVATAR_SYSTEM_ROOT` by the pipeline config loader.
+
 ## 3. Restore Local Assets
 
 Restore these from backup or rebuild them:

@@ -6,9 +6,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 from manifest_utils import save_json, write_manifest
+from pipeline.config import load_pipeline_config
 from state import PipelineState
 from orchestrator import Orchestrator
 
@@ -45,8 +44,7 @@ def main():
     parser.add_argument("--turn_id", default=None, help="Optional Booth turn id")
     args = parser.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_pipeline_config(args.config)
     if args.no_llm:
         config.setdefault("perception", {})["no_llm"] = True
     if args.no_video_export:

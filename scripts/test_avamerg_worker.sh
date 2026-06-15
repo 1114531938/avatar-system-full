@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 URL="${AVAMERG_WORKER_URL:-http://127.0.0.1:8789}"
 INPUT_JSON="${1:-$ROOT/perception_layer/results/task1/web_recording_1776930628367_20260423_155032_task1_input.json}"
 OUT_DIR="$ROOT/outputs/avamerg_worker_smoke"

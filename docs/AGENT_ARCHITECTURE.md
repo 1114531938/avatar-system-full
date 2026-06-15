@@ -51,3 +51,7 @@ The current phase does not move model repositories, virtual environments,
 caches, datasets, or generated outputs. Later `src/avatar_system/` migration
 should keep old entrypoints as shims until `scripts/run_agent.sh`, Web jobs, and
 resume flows are verified.
+
+Path configuration is centralized through `AVATAR_SYSTEM_ROOT` and
+`${PROJECT_ROOT}` expansion in `tools/avatar_agent/pipeline/config.py`. The
+default remains `/scratch/e1554543/avatar_system_full`.

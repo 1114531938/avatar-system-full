@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 VHAP_RUNS_ROOT="${VHAP_RUNS_ROOT:-$ROOT/VHAP_runs}"
 VHAP_REPO="${VHAP_REPO:-$VHAP_RUNS_ROOT/repo}"
 VHAP_ENV_NAME="${VHAP_ENV_NAME:-.vhap121}"

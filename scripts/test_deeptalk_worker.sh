@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 URL="${DEEPTALK_WORKER_URL:-http://127.0.0.1:8790}"
 AUDIO_PATH="${1:-$ROOT/outputs/web_recording_1776933053788_20260423_163059/outputs/reply.wav}"
 OUT_DIR="$ROOT/outputs/deeptalk_worker_smoke"

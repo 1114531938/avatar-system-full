@@ -7,8 +7,7 @@ import shlex
 from pathlib import Path
 
 import numpy as np
-import yaml
-
+from pipeline.config import load_pipeline_config, project_path
 from shell_runner import run_bash, run_bash_in_container
 
 
@@ -91,8 +90,7 @@ def main() -> None:
     parser.add_argument("--no_video", action="store_true")
     args = parser.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_pipeline_config(args.config)
     with open(os.path.join(args.run_dir, "state.json"), "r", encoding="utf-8") as f:
         state = json.load(f)
 
@@ -178,7 +176,7 @@ def main() -> None:
         out_video = os.path.join(out_dir, f"{args.render_mode}.mp4")
         frames_dir = os.path.join(out_dir, "frames")
         enhanced_audio = os.path.join(out_dir, "reply_enhanced.wav")
-        ffmpeg = runtime.get("ffmpeg", "/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg")
+        ffmpeg = runtime.get("ffmpeg", str(project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")))
         exporter_py = os.path.abspath(os.path.join(os.path.dirname(__file__), "export_gaussian_video.py"))
         export_cmd = f"""
         cd {q(gaussian_root)}

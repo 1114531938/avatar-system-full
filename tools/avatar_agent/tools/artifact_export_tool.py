@@ -5,6 +5,7 @@ import shutil
 import shlex
 
 from shell_runner import build_apptainer_exec_command, run_bash_in_container
+from pipeline.config import project_path
 
 
 class ArtifactExportTool:
@@ -46,7 +47,7 @@ class ArtifactExportTool:
         frames_dir = os.path.join(artifact_dir, "frames")
         ffmpeg = runtime.get(
             "ffmpeg",
-            "/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg",
+            str(project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")),
         )
         audio_filter = runtime.get(
             "audio_filter",

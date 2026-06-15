@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/scratch/e1554543/avatar_system_full"
+ROOT="${AVATAR_SYSTEM_ROOT:-/scratch/e1554543/avatar_system_full}"
 HOST="${GAUSSIAN_RENDER_WORKER_HOST:-127.0.0.1}"
 PORT="${GAUSSIAN_RENDER_WORKER_PORT:-8792}"
 
