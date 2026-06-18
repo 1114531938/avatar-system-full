@@ -7,7 +7,46 @@
     <link rel="stylesheet" href="./styles.css?v=3depb-register-20260615-01" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="page login-page">
+        <section class="login-shell">
+          <div class="brand-stage">
+            <div class="booth-visual" aria-hidden="true"></div>
+            <div class="brand-copy">
+              <h1 class="brand-title">3D Emotional Phone Booth</h1>
+              <p class="brand-subtitle">Loading interface...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      window.addEventListener("error", function (event) {
+        var app = document.getElementById("app");
+        if (!app) return;
+        app.innerHTML =
+          '<main class="page login-page"><section class="login-shell"><form class="auth-card">' +
+          "<h2>Interface failed to load</h2>" +
+          '<p class="error">' +
+          String(event.message || "Unknown browser error").replace(/[&<>"']/g, function (char) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char];
+          }) +
+          "</p></form></section></main>";
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        var app = document.getElementById("app");
+        if (!app) return;
+        var reason = event.reason && event.reason.message ? event.reason.message : event.reason;
+        app.innerHTML =
+          '<main class="page login-page"><section class="login-shell"><form class="auth-card">' +
+          "<h2>Interface failed to load</h2>" +
+          '<p class="error">' +
+          String(reason || "Unknown browser error").replace(/[&<>"']/g, function (char) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char];
+          }) +
+          "</p></form></section></main>";
+      });
+    </script>
     <script type="module" src="./app.js?v=3depb-media-exclusion-20260616-01"></script>
   </body>
 </html>

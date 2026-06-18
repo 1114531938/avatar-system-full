@@ -1823,7 +1823,22 @@ async function render() {
 }
 
 window.addEventListener("hashchange", () => {
-  render();
+  render().catch(showBootError);
 });
 window.addEventListener("beforeunload", stopCamera);
-render();
+render().catch(showBootError);
+
+function showBootError(error) {
+  const app = document.querySelector("#app");
+  if (!app) return;
+  app.innerHTML = `
+    <main class="page login-page">
+      <section class="login-shell">
+        <form class="auth-card">
+          <h2>Interface failed to load</h2>
+          <p class="error">${escapeHtml(error && error.message ? error.message : error || "Unknown browser error")}</p>
+        </form>
+      </section>
+    </main>
+  `;
+}
