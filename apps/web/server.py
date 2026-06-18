@@ -37,7 +37,7 @@ BOOTH_ROOT = OUTPUT_ROOT / "booth"
 BOOTH_UPLOAD_ROOT = BOOTH_ROOT / "uploads"
 BOOTH_EXPORT_ROOT = BOOTH_ROOT / "exports"
 BOOTH_DB = BOOTH_ROOT / "booth.sqlite3"
-SCRIPT = ROOT / "scripts" / "run_agent.sh"
+SCRIPT = ROOT / "scripts" / "avatar.sh"
 
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -405,11 +405,17 @@ def _speaker_tags(speaker: dict[str, str]) -> dict[str, str]:
 
 
 def _ffmpeg_bin() -> str:
+    runtime_ffmpeg = ROOT / "runtime" / "cache" / "bin" / "ffmpeg"
+    if runtime_ffmpeg.exists():
+        return str(runtime_ffmpeg)
     ffmpeg = ROOT / "tools" / "ffmpeg-git-20240629-amd64-static" / "ffmpeg"
     return str(ffmpeg) if ffmpeg.exists() else "ffmpeg"
 
 
 def _ffprobe_bin() -> str:
+    runtime_ffprobe = ROOT / "runtime" / "cache" / "bin" / "ffprobe"
+    if runtime_ffprobe.exists():
+        return str(runtime_ffprobe)
     ffprobe = ROOT / "tools" / "ffmpeg-git-20240629-amd64-static" / "ffprobe"
     return str(ffprobe) if ffprobe.exists() else "ffprobe"
 
@@ -579,7 +585,7 @@ def _tts_worker_synthesize(test_file: Path, output_wav: Path, timeout: float = 1
         if not health.get("ok"):
             raise RuntimeError(f"TTS worker is unhealthy: {health}")
     except Exception as exc:
-        raise RuntimeError(f"TTS worker is not available at {url}. Start it with scripts/avatar_service.sh start.") from exc
+        raise RuntimeError(f"TTS worker is not available at {url}. Start it with scripts/avatar.sh worker tts.") from exc
 
     payload = json.dumps({"test_file": str(test_file), "output_wav": str(output_wav)}).encode("utf-8")
     request = urllib.request.Request(
@@ -1390,6 +1396,7 @@ def _start_pipeline_job(
     cmd = [
         "bash",
         str(SCRIPT),
+        "agent",
         str(input_wav),
         str(avatar_id),
         "--run_id",

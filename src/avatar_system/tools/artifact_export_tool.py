@@ -47,7 +47,7 @@ class ArtifactExportTool:
         frames_dir = os.path.join(artifact_dir, "frames")
         ffmpeg = runtime.get(
             "ffmpeg",
-            str(project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")),
+            "/usr/bin/ffmpeg",
         )
         audio_filter = runtime.get(
             "audio_filter",

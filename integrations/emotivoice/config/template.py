@@ -42,7 +42,7 @@ class Config:
     pitch2id_path       = ROOT_DIR + "/<INFO_DIR>/pitch"
     energy2id_path      = ROOT_DIR + "/<INFO_DIR>/energy"
     speed2id_path       = ROOT_DIR + "/<INFO_DIR>/speed"
-    bert_path           = '/scratch/e1554543/avatar_system_full/EmotiVoice_runs/models/simbert-base-chinese'
+    bert_path           = '/scratch/e1554543/avatar_system_full/runtime/cache/models/emotivoice/simbert-base-chinese'
     token_list_path     = ROOT_DIR + "/<INFO_DIR>/tokenlist"
     style_encoder_ckpt  = ROOT_DIR + "/outputs/style_encoder/ckpt/checkpoint_163431"
     tmp_dir             = output_directory + "/tmp"

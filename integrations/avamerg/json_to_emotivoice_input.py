@@ -163,7 +163,7 @@ def main():
     parser.add_argument(
         "--frontend_py",
         type=str,
-        default="/scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/frontend.py",
+        default="/scratch/e1554543/avatar_system_full/integrations/emotivoice/frontend.py",
         help="EmotiVoice frontend.py 路径",
     )
     parser.add_argument(

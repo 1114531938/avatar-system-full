@@ -5,8 +5,8 @@ set -euo pipefail
 # User paths: edit these
 # =========================
 DEEPTALK_REPO="/scratch/e1554543/DEEPTalk_runs/repos/DEEPTalk"
-GAUSS_REPO="/scratch/e1554543/avatar_system_full/GSavatar_runs/GaussianAvatars"
-WAV="/scratch/e1554543/avatar_system_full/EmotiVoice_runs/repo/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/1.wav"
+GAUSS_REPO="/scratch/e1554543/avatar_system_full/integrations/gaussian_avatar"
+WAV="/scratch/e1554543/avatar_system_full/integrations/emotivoice/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/1.wav"
 TEMPLATE_NPZ="${GAUSS_REPO}/media/306/flame_param.npz"
 OUT_NPZ="${GAUSS_REPO}/media/306/flame_param_from_1wav_deeptalk.npz"
 
@@ -27,7 +27,7 @@ echo "  find ${DEEPTALK_REPO}/DEEPTalk/outputs -type f | sort"
 echo
 
 # Uncomment after you confirm the actual output motion path:
-# python /scratch/e1554543/avatar_system_full/wav_to_flame/deeptalk_to_demo_flame_param.py \
+# python /scratch/e1554543/avatar_system_full/integrations/deeptalk/avatar_system_helpers/deeptalk_to_demo_flame_param.py \
 #   --deeptalk_motion "${DEEPTALK_MOTION}" \
 #   --template "${TEMPLATE_NPZ}" \
 #   --out "${OUT_NPZ}" \

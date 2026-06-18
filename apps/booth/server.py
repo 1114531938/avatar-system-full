@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent
 AVATAR_ROOT = Path(os.environ.get("AVATAR_SYSTEM_ROOT", "/scratch/e1554543/avatar_system_full"))
 AVATAR_OUTPUT_ROOT = AVATAR_ROOT / "runtime" / "outputs"
 AVATAR_UPLOAD_ROOT = AVATAR_OUTPUT_ROOT / "3depb_uploads"
-AVATAR_SCRIPT = AVATAR_ROOT / "scripts" / "run_agent.sh"
+AVATAR_SCRIPT = AVATAR_ROOT / "scripts" / "avatar.sh"
 DB_DIR = ROOT / "data"
 DB_PATH = DB_DIR / "app.db"
 RECORDINGS_DIR = ROOT / "recordings"
@@ -36,7 +36,7 @@ PIPELINE_TIMEOUT_SECONDS = int(os.environ.get("DEPB_PIPELINE_TIMEOUT", "1800"))
 PIPELINE_AVATAR_ID = os.environ.get("DEPB_AVATAR_ID", "306")
 PIPELINE_TTS_SPEAKER_ID = os.environ.get("DEPB_TTS_SPEAKER_ID", "6224")
 PIPELINE_NO_LLM = os.environ.get("DEPB_NO_LLM", "0") == "1" or not bool(os.environ.get("OPENAI_API_KEY"))
-FFMPEG_BIN = Path(os.environ.get("DEPB_FFMPEG", str(AVATAR_ROOT / "tools" / "ffmpeg-git-20240629-amd64-static" / "ffmpeg")))
+FFMPEG_BIN = Path(os.environ.get("DEPB_FFMPEG", str(AVATAR_ROOT / "runtime" / "cache" / "bin" / "ffmpeg")))
 PIPELINE_STAGES = [
     ("input_agent", "Preparing video and audio input"),
     ("perception", "Analyzing your video and voice"),
@@ -983,6 +983,7 @@ class Handler(SimpleHTTPRequestHandler):
         command = [
             "bash",
             str(AVATAR_SCRIPT),
+            "agent",
             str(input_wav),
             str(avatar_id),
             "--run_id",
@@ -996,10 +997,10 @@ class Handler(SimpleHTTPRequestHandler):
             command.append("--no_llm")
 
         env = os.environ.copy()
-        env.setdefault("HF_HOME", str(AVATAR_ROOT / "cache" / "hf"))
-        env.setdefault("XDG_CACHE_HOME", str(AVATAR_ROOT / "cache" / "xdg"))
-        env.setdefault("MODELSCOPE_CACHE", str(AVATAR_ROOT / "cache" / "modelscope"))
-        env.setdefault("NLTK_DATA", str(AVATAR_ROOT / "cache" / "nltk_data"))
+        env.setdefault("HF_HOME", str(AVATAR_ROOT / "runtime" / "cache" / "hf"))
+        env.setdefault("XDG_CACHE_HOME", str(AVATAR_ROOT / "runtime" / "cache" / "xdg"))
+        env.setdefault("MODELSCOPE_CACHE", str(AVATAR_ROOT / "runtime" / "cache" / "modelscope"))
+        env.setdefault("NLTK_DATA", str(AVATAR_ROOT / "runtime" / "cache" / "nltk_data"))
 
         job = {
             "jobId": record_id,
@@ -1665,8 +1666,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/":
             path = "/index.html"
         if path.startswith("/vendor/"):
-            target = (AVATAR_ROOT / "web_app" / "static" / "vendor" / path.removeprefix("/vendor/")).resolve()
-            static_root = (AVATAR_ROOT / "web_app" / "static" / "vendor").resolve()
+            target = (ROOT / "vendor" / path.removeprefix("/vendor/")).resolve()
+            static_root = (ROOT / "vendor").resolve()
         elif path.startswith("/outputs/"):
             target = (AVATAR_OUTPUT_ROOT / path.removeprefix("/outputs/")).resolve()
             static_root = AVATAR_OUTPUT_ROOT.resolve()

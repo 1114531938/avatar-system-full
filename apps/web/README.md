@@ -4,7 +4,7 @@
 serves static frontend files, accepts uploads, starts pipeline jobs, manages
 Booth sessions, and proxies interactive Gaussian render requests.
 
-`web_app/server.py` is a compatibility shim that imports `apps.web.server:app`.
+Run this app through `scripts/avatar.sh web`.
 
 ## Frontend Pages
 
@@ -32,8 +32,8 @@ Routes:
 
 ## Ports
 
-- `7861`: main studio, via `scripts/run_web.sh` or `scripts/avatar_service.sh`
-- `7862`: Booth/3DEPB path, via `scripts/avatar_booth_service.sh`
+- `7861`: main studio, via `scripts/avatar.sh web`
+- `7862`: Booth/3DEPB path, via `scripts/avatar.sh booth` or `scripts/avatar.sh 3depb`
 
 ## Backend Responsibilities
 
@@ -50,5 +50,5 @@ Frontend-only changes usually need a browser refresh. Backend, worker, or script
 changes should use:
 
 ```bash
-bash scripts/avatar_service.sh restart
+bash scripts/avatar.sh web
 ```

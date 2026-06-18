@@ -1,1 +1,0 @@
-../integrations/deeptalk/avatar_system_helpers/run_1wav_to_deeptalk_to_demo_flame.sh

@@ -15,76 +15,37 @@
 *_bak*
 *.log
 *.pid
-web_app/.web_venv/
-apps/web/.web_venv/
-perception_layer/.perception/
-AvaMERG_runs/AvaMERG-Pipeline/.avamerg38/
-EmotiVoice_runs/repo/.EmotiVoice/
-GSavatar_runs/GaussianAvatars/.GSavatar/
-GSavatar_runs/GaussianAvatars/.GSavatar_glibc/
-wav_to_flame/DEEPTalk_runs/.deeptalk39/
-VHAP_runs/.vhap*/
-VHAP_runs/python310/
-integrations/avamerg/.avamerg38/
-integrations/emotivoice/.EmotiVoice/
-integrations/gaussian_avatar/.GSavatar/
-integrations/gaussian_avatar/.GSavatar_glibc/
 
-# Machine-local caches, containers and generated runs
-cache/
-containers/
-outputs/
+# Runtime state
 runtime/cache/
 runtime/containers/
 runtime/data/
 runtime/outputs/
-runtime/emotivoice/input/
-perception_layer/results/
-3DEPB_runs/3DEPB/data/
-3DEPB_runs/3DEPB/recordings/
+
+# App-local generated state
 apps/booth/data/
 apps/booth/recordings/
-EmotiVoice_runs/input/
-EmotiVoice_runs/repo/outputs*/
-integrations/emotivoice/outputs*/
-GSavatar_runs/GaussianAvatars/viewer_output/
-integrations/gaussian_avatar/viewer_output/
 
-# Datasets, identity assets and training products
-data/
-GSavatar_runs/GaussianAvatars/datasets/
-GSavatar_runs/GaussianAvatars/media/
-GSavatar_runs/GaussianAvatars/flame_model/assets/
-VHAP_runs/repo/asset/
-VHAP_runs/repo/tmp/
-AvaMERG_runs/AvaMERG-Pipeline/ckpt/
-EmotiVoice_runs/models/
-EmotiVoice_runs/repo/WangZeJun/
-EmotiVoice_runs/repo/data/
-wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/_downloads/
-wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk/outputs/
+# Integration-local generated outputs and environments
+integrations/avamerg/.avamerg38/
+integrations/avamerg/ckpt/
+integrations/avamerg/outputs*/
+integrations/emotivoice/.EmotiVoice/
+integrations/emotivoice/WangZeJun/
+integrations/emotivoice/data/
+integrations/emotivoice/outputs*/
+integrations/gaussian_avatar/.GSavatar/
+integrations/gaussian_avatar/.GSavatar_glibc/
 integrations/gaussian_avatar/datasets/
 integrations/gaussian_avatar/media/
 integrations/gaussian_avatar/flame_model/assets/
+integrations/gaussian_avatar/submodules/
+integrations/gaussian_avatar/viewer_output/
 integrations/vhap/asset/
 integrations/vhap/tmp/
-integrations/avamerg/ckpt/
-integrations/emotivoice/WangZeJun/
-integrations/emotivoice/data/
 integrations/deeptalk/_downloads/
-integrations/deeptalk/DEEPTalk/outputs/
-
-# Large third-party/vendor trees restored from their upstream projects
-GSavatar_runs/GaussianAvatars/submodules/
-wav_to_flame/DEEPTalk_runs/repos/DEEPTalk/DEEPTalk/externals/
-integrations/gaussian_avatar/submodules/
 integrations/deeptalk/DEEPTalk/externals/
-
-# Downloaded tools and archives
-tools/ffmpeg-*/
-tools/*.tar*
-tools/*.pdf
-VHAP_runs/*.tar*
+integrations/deeptalk/DEEPTalk/outputs/
 
 # Model weights, trained geometry, media and intermediate arrays
 *.pth

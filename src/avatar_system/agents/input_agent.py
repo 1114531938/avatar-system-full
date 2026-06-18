@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import shutil
 import shlex
 import subprocess
 from pathlib import Path
 
 from avatar_system.pipeline.config import project_path
 from avatar_system.pipeline.manifest_utils import find_first_value, load_json, save_json
+from avatar_system.pipeline.shell_runner import run_bash_in_container
 from avatar_system.tools.perception_tool import PerceptionTool
 
 
@@ -16,6 +18,43 @@ class InputAgent:
     def __init__(self, config: dict):
         self.config = config
         self.perception_tool = PerceptionTool(config)
+
+    def _resolve_ffmpeg(self) -> str | None:
+        env_ffmpeg = os.environ.get("AVATAR_FFMPEG") or os.environ.get("FFMPEG")
+        if env_ffmpeg and Path(env_ffmpeg).exists():
+            return env_ffmpeg
+        local_ffmpeg = project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")
+        if local_ffmpeg.exists():
+            return str(local_ffmpeg)
+        runtime_ffmpeg = project_path("runtime", "cache", "bin", "ffmpeg")
+        if runtime_ffmpeg.exists():
+            return str(runtime_ffmpeg)
+        return shutil.which("ffmpeg")
+
+    def _run_ffmpeg(self, cmd: list[str], log_path: Path) -> int:
+        ffmpeg_bin = self._resolve_ffmpeg()
+        with log_path.open("w", encoding="utf-8") as log:
+            if ffmpeg_bin:
+                cmd[0] = ffmpeg_bin
+                log.write("$ " + " ".join(shlex.quote(part) for part in cmd) + "\n\n")
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                log.write(proc.stdout or "")
+                log.write(f"\n[exit code: {proc.returncode}]\n")
+                return proc.returncode
+
+            container_image = self.config.get("paths", {}).get("gaussian_container_image")
+            if not container_image or not Path(container_image).exists():
+                raise FileNotFoundError(
+                    "ffmpeg not found on host and Gaussian container is unavailable. "
+                    "Set AVATAR_FFMPEG=/path/to/ffmpeg or restore runtime/containers/gaussianav_jammy."
+                )
+
+            container_cmd = ["/usr/bin/ffmpeg", *cmd[1:]]
+            shell_cmd = " ".join(shlex.quote(part) for part in container_cmd)
+            log.write("$ apptainer exec ... " + shell_cmd + "\n\n")
+
+        code, output, _ = run_bash_in_container(shell_cmd, container_image, str(log_path), check=False)
+        return code
 
     def _prepare_video(self, state) -> None:
         if not getattr(state, "input_video", None):
@@ -27,11 +66,9 @@ class InputAgent:
         frames_dir.mkdir(parents=True, exist_ok=True)
         state.video_frames_dir = str(frames_dir)
 
-        ffmpeg = project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")
-        ffmpeg_bin = str(ffmpeg) if ffmpeg.exists() else "ffmpeg"
         frame_pattern = frames_dir / "frame_%02d.jpg"
         cmd = [
-            ffmpeg_bin,
+            "ffmpeg",
             "-y",
             "-i",
             str(video_path),
@@ -42,11 +79,9 @@ class InputAgent:
             str(frame_pattern),
         ]
         log_path = Path(state.log_dir) / "input_agent.log"
-        with log_path.open("w", encoding="utf-8") as log:
-            log.write("$ " + " ".join(shlex.quote(part) for part in cmd) + "\n\n")
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            log.write(proc.stdout or "")
-            log.write(f"\n[exit code: {proc.returncode}]\n")
+        return_code = self._run_ffmpeg(cmd, log_path)
+        if return_code != 0:
+            raise RuntimeError(f"ffmpeg failed while extracting video frames; see {log_path}")
         state.extra.setdefault("input_agent", {})["video_frames_dir"] = str(frames_dir)
         state.extra["input_agent"]["frame_count"] = len(list(frames_dir.glob("frame_*.jpg")))
 

@@ -58,13 +58,13 @@ The local working server currently uses component-specific environments, for
 example:
 
 ```text
-web_app/.web_venv/               # compatibility venv used by scripts/run_web.sh
-perception_layer/.perception/
+runtime/cache/venvs/web/
+runtime/cache/venvs/perception/
 integrations/avamerg/.avamerg38/
 integrations/emotivoice/.EmotiVoice/
 integrations/gaussian_avatar/.GSavatar/
-wav_to_flame/DEEPTalk_runs/.deeptalk39/
-VHAP_runs/.vhap*/
+runtime/cache/venvs/deeptalk/
+runtime/cache/venvs/vhap*/
 ```
 
 Use each component's requirements file or existing setup notes to recreate them.
@@ -86,7 +86,7 @@ Load it before starting services:
 set -a
 source config/runtime.env
 set +a
-bash scripts/avatar_service.sh start
+bash scripts/avatar.sh web
 ```
 
 ## 6. Start Services
@@ -94,20 +94,19 @@ bash scripts/avatar_service.sh start
 Main studio:
 
 ```bash
-bash scripts/avatar_service.sh start
+bash scripts/avatar.sh web
 ```
 
 Booth / 3DEPB:
 
 ```bash
-bash scripts/avatar_booth_service.sh start
+bash scripts/avatar.sh booth
 ```
 
 Check:
 
 ```bash
-bash scripts/avatar_service.sh status
-bash scripts/avatar_service.sh logs
+bash scripts/avatar.sh --help
 ```
 
 ## 7. Reverse Proxy Reminder

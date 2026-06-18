@@ -88,7 +88,7 @@ class DeepSpeedAgent:
         If it is not writable, fall back to a user-owned path.
         If both fail, disable TensorBoard safely.
         """
-        fallback_log_path = "/scratch/e1554543/avatar_system_full/AvaMERG_runs/AvaMERG-Pipeline/outputs/tb_logs"
+        fallback_log_path = "/scratch/e1554543/avatar_system_full/runtime/outputs/avamerg/tb_logs"
 
         candidate_paths = []
         if self.args.get("log_path"):

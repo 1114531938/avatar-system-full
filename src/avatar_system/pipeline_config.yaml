@@ -1,8 +1,8 @@
 paths:
-  perception_root: ${PROJECT_ROOT}/perception_layer
-  perception_venv: ${PROJECT_ROOT}/perception_layer/.perception
-  perception_out_dir: ${PROJECT_ROOT}/perception_layer/results/merged
-  perception_task1_out_dir: ${PROJECT_ROOT}/perception_layer/results/task1
+  perception_root: ${PROJECT_ROOT}/integrations/perception
+  perception_venv: ${PROJECT_ROOT}/runtime/cache/venvs/perception
+  perception_out_dir: ${PROJECT_ROOT}/runtime/outputs/perception/merged
+  perception_task1_out_dir: ${PROJECT_ROOT}/runtime/outputs/perception/task1
 
   avamerg_root: ${PROJECT_ROOT}/integrations/avamerg
   avamerg_venv: ${PROJECT_ROOT}/integrations/avamerg/.avamerg38
@@ -10,13 +10,13 @@ paths:
 
   emotivoice_root: ${PROJECT_ROOT}/integrations/emotivoice
   emotivoice_venv: ${PROJECT_ROOT}/integrations/emotivoice/.EmotiVoice
-  emotivoice_input_dir: ${PROJECT_ROOT}/runtime/emotivoice/input
+  emotivoice_input_dir: ${PROJECT_ROOT}/runtime/cache/emotivoice/input
   emotivoice_frontend_py: ${PROJECT_ROOT}/integrations/emotivoice/frontend.py
   json_to_emotivoice_script: ${PROJECT_ROOT}/integrations/avamerg/json_to_emotivoice_input.py
   emotivoice_output_wav_glob: ${PROJECT_ROOT}/integrations/emotivoice/outputs/prompt_tts_open_source_joint/test_audio/audio/g_00140000/*.wav
 
   deeptalk_root: ${PROJECT_ROOT}/integrations/deeptalk/DEEPTalk
-  deeptalk_venv: ${PROJECT_ROOT}/wav_to_flame/DEEPTalk_runs/.deeptalk39
+  deeptalk_venv: ${PROJECT_ROOT}/runtime/cache/venvs/deeptalk
   deeptalk_output_npy: ${PROJECT_ROOT}/integrations/deeptalk/DEEPTalk/outputs/params/1.npy
   deeptalk_merge_script: ${PROJECT_ROOT}/integrations/deeptalk/avatar_system_helpers/deeptalk_to_demo_flame_param.py
 

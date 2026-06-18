@@ -21,11 +21,11 @@ export LLM_MODEL="${LLM_MODEL:-openai/gpt-oss-120b:free}"
 
 mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$MODELSCOPE_CACHE"
 
-export PYTHONPATH="$ROOT/src:$ROOT/tools/avatar_agent:${PYTHONPATH:-}"
+export PYTHONPATH="$ROOT/src:${PYTHONPATH:-}"
 
 cd "$ROOT"
 /usr/bin/python3.10 -m avatar_system.pipeline.cli \
-  --input_wav "$ROOT/perception_layer/data/demo_wavs/sample3.wav" \
+  --input_wav "$ROOT/integrations/perception/data/demo_wavs/sample3.wav" \
   --avatar_id 306 \
   --config "$ROOT/src/avatar_system/pipeline_config.yaml" \
   "$@"

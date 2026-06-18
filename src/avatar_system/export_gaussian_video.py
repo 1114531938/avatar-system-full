@@ -207,9 +207,9 @@ def main() -> None:
 
     ffmpeg = args.ffmpeg
     fallback_ffmpeg = (
-        project_path("tools", "ffmpeg-git-20240629-amd64-static", "ffmpeg")
+        project_path("runtime", "cache", "bin", "ffmpeg")
         if project_path is not None
-        else Path("/scratch/e1554543/avatar_system_full/tools/ffmpeg-git-20240629-amd64-static/ffmpeg")
+        else Path("/scratch/e1554543/avatar_system_full/runtime/cache/bin/ffmpeg")
     )
     if not Path(ffmpeg).exists() and fallback_ffmpeg.exists():
         ffmpeg = str(fallback_ffmpeg)

@@ -396,7 +396,7 @@ function renderRoom() {
           <div class="talk-input">
             <textarea id="talkText" placeholder="Record your video and audio, then send it to generate an avatar reply."></textarea>
             <button class="primary-btn" data-action="send-talk">Send to Digital Human</button>
-            <audio id="avatarAudio" ${avatarAudioUrl ? `src="${escapeHtml(avatarAudioUrl)}" autoplay` : ""}></audio>
+            <audio id="avatarAudio" ${avatarAudioUrl && !avatarVideoUrl ? `src="${escapeHtml(avatarAudioUrl)}" autoplay` : ""}></audio>
           </div>
         </aside>
       </section>
@@ -405,6 +405,7 @@ function renderRoom() {
 
   bindTopbar();
   bindRoom();
+  bindMediaExclusion();
   startCamera();
 }
 
@@ -511,6 +512,21 @@ function bindRoom() {
   }
 }
 
+function pauseAvatarMediaExcept(activeMedia) {
+  document.querySelectorAll("#avatarVideo, #avatarAudio, #avatarRenderAudio, .history-video, .recording-player").forEach((media) => {
+    if (media === activeMedia) return;
+    if (typeof media.pause === "function" && !media.paused) {
+      media.pause();
+    }
+  });
+}
+
+function bindMediaExclusion() {
+  document.querySelectorAll("#avatarVideo, #avatarAudio, #avatarRenderAudio, .history-video, .recording-player").forEach((media) => {
+    media.addEventListener("play", () => pauseAvatarMediaExcept(media));
+  });
+}
+
 async function startCamera() {
   const video = document.querySelector("#localVideo");
   if (!video) return;
@@ -574,6 +590,8 @@ function setAvatarView(view) {
   if (activeAvatarView === "rendered") {
     loadAvatarRenderView();
   } else {
+    const renderAudio = document.querySelector("#avatarRenderAudio");
+    if (renderAudio) renderAudio.pause();
     stopRenderPreviewLoop();
   }
 }
@@ -769,6 +787,7 @@ function toggleRenderPlayback() {
   const video = document.querySelector("#avatarVideo");
   if (!audio || !audio.src) return;
   if (audio.paused) {
+    pauseAvatarMediaExcept(audio);
     if (video) video.pause();
     audio.play().catch(() => {});
   } else {
@@ -1205,15 +1224,19 @@ async function applyAvatarResult(response) {
     const video = document.querySelector("#avatarVideo");
     if (video) {
       video.currentTime = 0;
+      pauseAvatarMediaExcept(video);
       video.play().catch(() => {
         video.muted = true;
         video.play().catch(() => {});
       });
     }
   });
-  if (avatarAudioUrl) {
+  if (avatarAudioUrl && !avatarVideoUrl) {
     const avatarAudio = document.querySelector("#avatarAudio");
-    if (avatarAudio) avatarAudio.play().catch(() => {});
+    if (avatarAudio) {
+      pauseAvatarMediaExcept(avatarAudio);
+      avatarAudio.play().catch(() => {});
+    }
   }
   setTimeout(() => stopGenerationProgress("Ready", 0), 1200);
 }

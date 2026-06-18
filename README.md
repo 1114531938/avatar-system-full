@@ -1,476 +1,62 @@
 # Avatar System Full
 
-`/scratch/e1554543/avatar_system_full` 是当前正在使用的数字人系统主工程目录。
+`avatar_system_full` is the local full-stack avatar pipeline workspace.
 
-这份 README 只描述**当前实际可运行的结构、服务和工作流**。
-
-> GitHub 源码仓库不包含模型权重、数据集、训练资产、虚拟环境、容器、缓存和运行输出。
-> 发布版的包含/排除范围见 `SOURCE_RELEASE.md`；本地完整部署仍按本文目录结构运行。
-
-## 1. 项目目标
-
-这套工程完成一条从语音输入到数字人视频输出的完整链路：
-
-1. 感知层：ASR + 情感识别 + Task1 输入构建
-2. 对话层：AvaMERG 生成回复文本
-3. TTS：EmotiVoice 生成回复音频
-4. 动作层：DEEPTalk / wav_to_flame 生成 FLAME motion
-5. 渲染层：GaussianAvatars 生成最终数字人视频
-6. Web：提供网页录音、上传、运行、查看结果、3D 预览与导出
-
-## 2. 当前目录结构
-
-当前源码已经整理成 `apps/ + src/avatar_system/ + integrations/ + runtime/`
-结构。旧路径作为兼容 shim 或本地软链接保留，避免现有脚本和环境失效。
+## Layout
 
 ```text
-/scratch/e1554543/avatar_system_full
-├── README.md
+avatar-system-full/
 ├── apps/
-│   ├── web/                         # FastAPI + 7861 主前端
-│   └── booth/                       # 7862 Booth / 3DEPB 前端
-├── src/avatar_system/               # 三 Agent pipeline 核心代码
-├── integrations/                    # AvaMERG / EmotiVoice / DEEPTalk / Gaussian / VHAP
-├── runtime/                         # 本地缓存、数据、输出、容器，Git 忽略
-├── scripts/                         # 统一启动脚本、服务管理脚本、调试脚本
-├── config/                          # 环境变量示例
-├── docs/                            # 架构、端口、部署说明
-├── perception_layer/                # 感知层
-├── tools/avatar_agent/              # 旧 CLI 兼容入口
-└── web_app/                         # 旧 Web import 兼容入口
+│   ├── web/                 # FastAPI + 7861 main frontend
+│   └── booth/               # 7862 Booth / 3DEPB frontend or adapter
+├── src/
+│   └── avatar_system/
+│       ├── agents/          # core agent architecture
+│       ├── tools/           # TTS / AvaMERG / DEEPTalk / Gaussian wrappers
+│       ├── pipeline/        # orchestrator, state, config
+│       └── api/             # backend API route logic
+├── integrations/
+│   ├── avamerg/
+│   ├── emotivoice/
+│   ├── deeptalk/
+│   ├── gaussian_avatar/
+│   ├── vhap/
+│   ├── 3depb/
+│   └── perception/          # ASR / SER integration used by InputAgent
+├── scripts/                 # unified startup entry
+├── config/
+├── docs/
+├── runtime/                 # local runtime state, ignored by Git
+│   ├── cache/
+│   ├── data/
+│   ├── outputs/
+│   └── containers/
+└── README.md
 ```
 
-更细的结构索引见：
+`runtime/cache/` also holds local virtual environments and model caches that
+used to live under compatibility folders.
 
-- `docs/PROJECT_STRUCTURE.md`
-- `docs/SERVICES_AND_PORTS.md`
-- `docs/AGENT_ARCHITECTURE.md`
-- `apps/web/README.md`
-- `scripts/README.md`
-
-### 关键子目录
-
-```text
-apps/web/                            # Web server + static frontend
-apps/web/static/                     # HTML / CSS / JS / vendor
-web_app/.web_venv/                   # 兼容保留的 Web 服务虚拟环境
-
-scripts/avatar_service.sh            # 一键管理 web + worker
-scripts/run_web.sh                   # 只启动 web
-scripts/run_tts_worker.sh            # 只启动 TTS worker
-scripts/run_avamerg_worker.sh        # 只启动 AvaMERG worker
-scripts/run_deeptalk_worker.sh       # 只启动 DEEPTalk worker
-scripts/run_perception_worker.sh     # 只启动 perception worker
-scripts/run_gaussian_render_worker.sh# 只启动 Gaussian render worker
-scripts/run_agent.sh                 # 命令行整条链路入口
-scripts/vhap_env.sh                  # VHAP 环境统一入口
-scripts/init_subject.sh              # 初始化新 subject 目录
-scripts/run_vhap_subject.sh          # 跑 VHAP preprocess/track/export
-scripts/export_vhap_to_gaussian.sh   # 单独导出 Gaussian source
-scripts/train_gaussian_subject.sh    # 训练新的 Gaussian avatar
-scripts/register_avatar_asset.sh     # 注册 point_cloud/template 到 media/<id>
-
-src/avatar_system/                   # 命令行 orchestrator / export 工具
-tools/avatar_agent/                  # 旧入口 shim，转调 src/avatar_system
-tools/ffmpeg-git-20240629-amd64-static/
-
-integrations/gaussian_avatar/media/306/
-                                    # avatar 306 相关 point_cloud / template 等
-
-integrations/vhap/                   # 项目内 VHAP 仓库
-runtime/data/subjects/<subject_id>/  # 新 subject 数据工作区
-
-runtime/outputs/service_logs/        # 服务日志和 pid 文件
-runtime/outputs/web_uploads/         # 网页上传 wav
-runtime/outputs/web_<...>/           # 网页每次运行结果
-```
-
-## 3. 当前运行方式
-
-现在有两种主用方式：
-
-1. 命令行整条链路运行
-2. Web UI 运行
-
----
-
-## 4. 命令行运行
-
-### 4.1 环境变量
-
-如果要跑完整回复链路，先在 shell 里设置：
-
-```bash
-export OPENAI_API_KEY="..."
-export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
-export LLM_MODEL="openai/gpt-oss-120b:free"
-```
-
-### 4.2 直接运行整条链路
+## Start
 
 ```bash
 cd /scratch/e1554543/avatar_system_full
 
-bash scripts/run_agent.sh \
-  /scratch/e1554543/avatar_system_full/perception_layer/data/demo_wavs/sample_dialog_02.wav \
-  306
+bash scripts/avatar.sh web
+bash scripts/avatar.sh booth
+bash scripts/avatar.sh agent
+bash scripts/avatar.sh worker tts
+bash scripts/avatar.sh worker avamerg
+bash scripts/avatar.sh worker deeptalk
+bash scripts/avatar.sh worker perception
+bash scripts/avatar.sh worker gaussian
 ```
 
-### 4.3 轻量测试
+Default ports are documented in `docs/SERVICES_AND_PORTS.md`.
 
-如果只是检查流程和路径，不想跑完整视频导出：
+## Notes
 
-```bash
-cd /scratch/e1554543/avatar_system_full
-
-bash scripts/run_agent.sh \
-  /scratch/e1554543/avatar_system_full/perception_layer/data/demo_wavs/sample_dialog_02.wav \
-  306 \
-  --prepare_only --no_video_export --no_llm
-```
-
-## 5. Web UI 运行
-
-### 5.1 一键启动推荐方式
-
-当前推荐统一使用：
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_service.sh start
-```
-
-这会启动：
-
-- Web server
-- TTS worker
-- AvaMERG worker
-- DEEPTalk worker
-- perception worker
-- Gaussian render worker
-
-默认端口：
-
-```text
-7861  web / main studio
-7862  booth / 3DEPB
-8788  TTS worker
-8789  AvaMERG worker
-8790  DEEPTalk worker
-8791  perception worker
-8792  Gaussian render worker
-```
-
-### 5.1.1 两个前端入口
-
-当前有两个面向用户的前端入口：
-
-```text
-7861  主研究/调试界面，默认启动脚本 scripts/avatar_service.sh
-7862  Booth / 3DEPB 界面，默认启动脚本 scripts/avatar_booth_service.sh
-```
-
-后端关系：
-
-- `apps/web/server.py` 是统一 FastAPI 后端，提供 `/api/*`、`/studio`、`/booth`。
-- `scripts/run_web.sh` 默认把 `/` 指到主界面 `index.html`。
-- `scripts/run_booth.sh` 设置 `BOOTH_DEFAULT_ROUTE=1`，把 `/` 指到内置 Booth 页面。
-- `scripts/avatar_booth_service.sh` 当前默认走 `scripts/run_3depb.sh`，入口在 `apps/booth/server.py`。
-
-如果只想用内置 Booth 页面，不走外部 3DEPB，可以参考 `docs/SERVICES_AND_PORTS.md`。
-
-### 5.2 重启
-
-改了后端、worker、服务脚本后，使用：
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_service.sh restart
-```
-
-### 5.3 查看状态和日志
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_service.sh status
-bash scripts/avatar_service.sh logs
-```
-
-### 5.4 单独控制 Gaussian render worker
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_service.sh stop-gaussian-render
-bash scripts/avatar_service.sh start-gaussian-render
-```
-
-### 5.5 注意
-
-`avatar_service.sh start` 的逻辑是：
-
-- 如果某个 worker 的 `/health` 已经能通
-- 就认为它“已经在运行”
-- **不会强制重启它**
-
-所以如果你更新了 worker 代码，但旧进程还占着端口，单纯 `start` 可能不会生效。
-这种情况下请用：
-
-```bash
-bash scripts/avatar_service.sh restart
-```
-
-或者单独 stop / start 对应 worker。
-
-如需继续使用 `7860`，可以显式覆盖端口：
-
-```bash
-PORT=7860 bash scripts/avatar_service.sh start
-```
-
-### 5.6 Booth / 3DEPB 入口
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_booth_service.sh start
-```
-
-默认打开：
-
-```text
-http://localhost:7862
-```
-
-该入口会复用同一套 worker 管理逻辑，并把服务日志写到：
-
-```text
-runtime/outputs/service_logs/booth_web.log
-```
-
-## 6. Web 页面功能
-
-当前网页入口默认是：
-
-```text
-http://localhost:7861
-```
-
-页面支持：
-
-- 录音
-- 上传 wav
-- 设置 API Key / Base URL / Model
-- 选择 avatar id
-- Generate 运行整条网页链路
-- 显示日志和结果路径
-- 下载输出文件
-
-### 6.1 输出视图
-
-当前页面主要有三个视图：
-
-- `Video`
-- `3D Render`
-- `3D Debug`
-
-#### Video
-
-显示最终 `final_video.mp4`。
-
-#### 3D Render
-
-当前主线方案。
-它不是浏览器自己做高质量 Gaussian 渲染，而是：
-
-- 前端负责播放、拖拽、进度条、音频同步
-- 后端调用常驻 Gaussian render worker
-- worker 用 CUDA 渲染当前 frame + 当前 camera
-
-它现在支持：
-
-- 播放 / 暂停
-- 拖拽视角
-- 音频同步
-- 拖动进度条
-- Reset camera
-- Fit Subject
-- Export View
-
-#### 3D Debug
-
-这是实验 / 调试视图，不是主方案。
-
-里面目前有两个子模式：
-
-- `Point`
-- `WebGPU`
-
-说明：
-
-- `Point`：点云调试
-- `WebGPU`：浏览器端实验性 Gaussian / splat 路线
-
-当前 `WebGPU` 仍然是实验线，**不要把它当最终效果标准**。
-
-## 7. 当前渲染方案状态
-
-### 7.1 主方案
-
-主方案是：
-
-**`3D Render = CUDA interactive viewer`**
-
-当前已经做过的优化包括：
-
-- render worker 常驻
-- 直接返回图片 bytes，而不是先写 PNG 再让前端二次拉取
-- 播放时连续拉帧
-- 拖拽时优先当前视角
-- 进度条 / reset / fit subject 时立即刷新
-
-### 7.2 调试方案
-
-`3D Debug / WebGPU` 是继续研究纯前端渲染路线的实验入口。
-目前还达不到 `final_video.mp4` 的质量。
-
-## 8. 运行输出
-
-每次网页运行会生成一个目录：
-
-```text
-/scratch/e1554543/avatar_system_full/runtime/outputs/web_<run_id>
-```
-
-常见结构：
-
-```text
-runtime/outputs/web_<run_id>/
-├── logs/
-├── outputs/
-├── artifacts/
-├── state.json
-└── manifest.json
-```
-
-常见产物在：
-
-```text
-runtime/outputs/web_<run_id>/artifacts/
-```
-
-通常包括：
-
-- `final_video.mp4`
-- `white_model.mp4`
-- `reply.wav`
-- `reply_enhanced.wav`
-- `flame_motion.npz`
-- `manifest.json`
-
-### 8.1 自动清理
-
-当前 Web 端已经做了自动清理策略：
-
-- `runtime/outputs/` 下网页运行目录默认只保留最近 5 个
-- `service_logs` 和 `web_uploads` 不会被误删
-
-## 9. 缓存目录
-
-当前运行统一使用项目内缓存：
-
-```text
-/scratch/e1554543/avatar_system_full/runtime/cache
-```
-
-其中常见子目录包括：
-
-- `runtime/cache/hf`
-- `runtime/cache/xdg`
-- `runtime/cache/modelscope`
-- `runtime/cache/nltk_data`
-- `runtime/cache/cache`（Apptainer / OCI / oras 相关缓存）
-
-如果需要整体迁移、备份或清理缓存，优先围绕这个目录处理。
-
-## 10. 常见问题
-
-### 10.1 为什么我改了 worker 代码，页面还是老行为
-
-`avatar_service.sh` 现在不仅检查 `/health`，还会检查：
-
-- 端口上的监听进程 PID
-- PID 文件是否匹配这个监听进程
-
-如果端口上是“旧进程 / 孤儿进程 / 不是脚本当前管理的进程”，脚本会先替换它再启动新服务。
-常用命令：
-
-```bash
-bash scripts/avatar_service.sh restart
-bash scripts/avatar_service.sh status
-```
-
-### 10.2 为什么页面报 `Gaussian render worker failed: HTTP Error 404: Not Found`
-
-这通常说明 web server 和 Gaussian render worker 版本不一致。
-现在推荐直接执行：
-
-```bash
-bash scripts/avatar_service.sh restart
-```
-
-如果还需要进一步确认端口占用：
-
-```bash
-ss -ltnp | grep 8792
-```
-
-### 10.3 为什么 3D Render 不是满帧实时
-
-因为当前主方案仍然是：
-
-- 前端发送 camera + frame
-- 后端 CUDA 渲染单帧
-- 返回压缩图像
-
-这已经比“落盘 PNG 再拉文件”快很多，但它仍然是“高质量交互预览”，不是浏览器本地实时原生渲染。
-
-## 11. 建议工作流
-
-### 改前端
-
-只改：
-
-- `apps/web/static/index.html`
-- `apps/web/static/style_commercial.css`
-- `apps/web/static/app.js`
-
-通常：
-
-- 不需要重启整套服务
-- 强刷浏览器即可
-
-### 改后端 / worker / 脚本
-
-改这些文件后建议重启：
-
-- `apps/web/server.py`
-- `scripts/*.sh`
-- `integrations/gaussian_avatar/gaussian_render_worker.py`
-- `src/avatar_system/*.py`
-
-执行：
-
-```bash
-cd /scratch/e1554543/avatar_system_full
-bash scripts/avatar_service.sh restart
-```
-
-## 12. 后续部署提示
-
-GitHub 仓库只保存源码和轻量配置说明，不保存模型、数据、缓存、容器和运行输出。
-部署到阿里云前请先看：
-
-```text
-docs/DEPLOY_ALIYUN.md
-config/runtime.env.example
-SOURCE_RELEASE.md
-```
+- Source code lives in `apps/`, `src/avatar_system/`, and `integrations/`.
+- Local data, generated outputs, caches, containers, venvs, and model files live
+  under `runtime/` and are intentionally ignored.
+- Historical compatibility directories have been removed from the project root.
