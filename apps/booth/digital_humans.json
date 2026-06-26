@@ -3,44 +3,38 @@
     {
       "avatar_id": "306",
       "tts_speaker_id": "6224",
-      "name": "Avatar 306",
-      "role": "Avatar 306 · Voice 6224",
-      "color": "#32d0a4"
-    },
-    {
-      "avatar_id": "1001",
-      "tts_speaker_id": "6224",
-      "name": "Avatar 1001",
-      "role": "Avatar 1001 · Voice 6224",
-      "color": "#6fb7ff"
+      "name": "Evan Hart",
+      "role": "Calm, structured, and emotionally steady, with subtle resonance in key moments.",
+      "color": "#32d0a4",
+      "image_url": "/digital_human_images/306_12dc682f.png",
+      "background_url": ""
     },
     {
       "avatar_id": "2001",
-      "tts_speaker_id": "1851",
-      "name": "NeRSemble 074",
-      "role": "Avatar 2001 · Voice 1851",
-      "color": "#ffb84d"
-    },
-    {
-      "avatar_id": "2001_2",
-      "tts_speaker_id": "6139",
-      "name": "Avatar 2001_2",
-      "role": "Avatar 2001_2 · Voice 6139",
-      "color": "#f0798d"
+      "tts_speaker_id": "1801",
+      "name": "Marco Leone",
+      "role": "High-energy, expressive, and opinion-driven, designed to amplify conversational intensity and momentum.",
+      "color": "#ffb84d",
+      "image_url": "/digital_human_images/2001_61fbd13b.png",
+      "background_url": ""
     },
     {
       "avatar_id": "2002",
-      "tts_speaker_id": "3738",
-      "name": "NeRSemble 165",
-      "role": "Avatar 2002 · Voice 3738",
-      "color": "#a78bfa"
+      "tts_speaker_id": "3553",
+      "name": "Aria Vale",
+      "role": "Soft-spoken, empathetic, and emotionally perceptive, focused on gentle understanding and reflective dialogue.",
+      "color": "#a78bfa",
+      "image_url": "/digital_human_images/2002_56d3e671.png",
+      "background_url": ""
     },
     {
       "avatar_id": "2003",
-      "tts_speaker_id": "6385",
-      "name": "NeRSemble 218",
-      "role": "Avatar 2003 · Voice 6385",
-      "color": "#22c55e"
+      "tts_speaker_id": "6346",
+      "name": "Darius Kane",
+      "role": "Direct, assertive, and decision-driven, focused on fast clarity and persuasive communication.",
+      "color": "#22c55e",
+      "image_url": "/digital_human_images/2003_75f998e0.png",
+      "background_url": ""
     }
   ]
 }

@@ -153,7 +153,7 @@ def main():
     parser.add_argument("--wav", type=str, required=True)
     parser.add_argument("--perception_out", type=str, required=True)
     parser.add_argument("--model", type=str, default="small")
-    parser.add_argument("--language", type=str, default="Chinese")
+    parser.add_argument("--language", type=str, default="auto")
     parser.add_argument("--speaker_id", type=str, default="user")
     parser.add_argument(
         "--ser_model",

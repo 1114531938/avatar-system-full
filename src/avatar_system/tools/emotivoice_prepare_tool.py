@@ -35,6 +35,9 @@ class EmotiVoicePrepareTool:
         cmd = f"""
         cd {q(root)}
         export NLTK_DATA={q(env_cfg["NLTK_DATA"])}
+        export OPENAI_API_KEY={q(os.environ.get("OPENAI_API_KEY", ""))}
+        export OPENAI_BASE_URL={q(os.environ.get("OPENAI_BASE_URL", env_cfg.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")))}
+        export LLM_MODEL={q(os.environ.get("LLM_MODEL", env_cfg.get("LLM_MODEL", "openai/gpt-oss-120b:free")))}
         {q(py)} {q(converter_script)} \
           --input_json {q(state.task1_reply_json)} \
           --output_txt {q(out_txt)} \

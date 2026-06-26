@@ -357,43 +357,71 @@ class MERGModel(nn.Module):
             history = conv.get("dialogue_history", [])
             coe = conv.get("chain_of_empathy") or conv.get("coe") or {}
 
-            speaker_emotion_zh = self._to_zh_emotion(coe.get("speaker_emotion", ""))
-            event_scenario_zh = self._to_zh_text(coe.get("event_scenario", ""), "event_scenario")
-            emotion_cause_zh = self._to_zh_text(coe.get("emotion_cause", ""), "emotion_cause")
-            goal_to_response_zh = self._to_zh_text(coe.get("goal_to_response", ""), "goal_to_response")
-
             latest_utterance = ""
             if history:
                 latest_utterance = history[-1].get("utterance", "")
 
-            lines = [
-                "你是对话中的回应者，请直接回复说话者。",
-                "要求：",
-                "1. 只能以回应者身份说话。",
-                "2. 不要复述任务，不要解释，不要输出英文。",
-                "3. 不要续写说话者内容。",
-                "4. 不要输出 Dialogue:, Speaker:, Assistant:, [Speaker], --- 这类模板。",
-                "5. 只输出一句到两句自然、温柔、口语化的中文回复。",
-                "",
-                f"说话者：{latest_utterance} <Aud> <Vid>",
-            ]
+            wants_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in latest_utterance)
+            if wants_chinese:
+                speaker_emotion = self._to_zh_emotion(coe.get("speaker_emotion", ""))
+                event_scenario = self._to_zh_text(coe.get("event_scenario", ""), "event_scenario")
+                emotion_cause = self._to_zh_text(coe.get("emotion_cause", ""), "emotion_cause")
+                goal_to_response = self._to_zh_text(coe.get("goal_to_response", ""), "goal_to_response")
 
-            if speaker_emotion_zh:
-                lines.append(f"说话者情绪：{speaker_emotion_zh}")
-            if event_scenario_zh:
-                lines.append(f"场景：{event_scenario_zh}")
-            if emotion_cause_zh:
-                lines.append(f"原因：{emotion_cause_zh}")
-            if goal_to_response_zh:
-                lines.append(f"回复目标：{goal_to_response_zh}")
-
-            lines.extend(
-                [
+                lines = [
+                    "你是对话中的回应者，请直接回复说话者。",
+                    "要求：",
+                    "1. 只能以回应者身份说话。",
+                    "2. 不要复述任务，不要解释。",
+                    "3. 不要续写说话者内容。",
+                    "4. 不要输出 Dialogue:, Speaker:, Assistant:, [Speaker], --- 这类模板。",
+                    "5. 只输出一句到两句自然、温柔、口语化的中文回复。",
+                    "",
+                    f"说话者：{latest_utterance} <Aud> <Vid>",
+                ]
+                if speaker_emotion:
+                    lines.append(f"说话者情绪：{speaker_emotion}")
+                if event_scenario:
+                    lines.append(f"场景：{event_scenario}")
+                if emotion_cause:
+                    lines.append(f"原因：{emotion_cause}")
+                if goal_to_response:
+                    lines.append(f"回复目标：{goal_to_response}")
+                lines.extend([
                     "",
                     "请直接给出回应者的中文回复：",
                     "回应者：",
+                ])
+            else:
+                speaker_emotion = coe.get("speaker_emotion", "")
+                event_scenario = coe.get("event_scenario", "")
+                emotion_cause = coe.get("emotion_cause", "")
+                goal_to_response = coe.get("goal_to_response", "")
+
+                lines = [
+                    "You are the responder in an empathetic conversation. Reply directly to the speaker.",
+                    "Requirements:",
+                    "1. Speak only as the responder.",
+                    "2. Do not restate the task or explain your reasoning.",
+                    "3. Do not continue or rewrite the speaker's words.",
+                    "4. Do not output labels such as Dialogue:, Speaker:, Assistant:, [Speaker], or ---.",
+                    "5. Output one or two natural, warm, conversational English sentences.",
+                    "",
+                    f"Speaker: {latest_utterance} <Aud> <Vid>",
                 ]
-            )
+                if speaker_emotion:
+                    lines.append(f"Speaker emotion: {speaker_emotion}")
+                if event_scenario:
+                    lines.append(f"Scenario: {event_scenario}")
+                if emotion_cause:
+                    lines.append(f"Emotion cause: {emotion_cause}")
+                if goal_to_response:
+                    lines.append(f"Response goal: {goal_to_response}")
+                lines.extend([
+                    "",
+                    "Give the responder's English reply directly:",
+                    "Responder:",
+                ])
             prompts.append("\n".join(lines))
 
         return prompts

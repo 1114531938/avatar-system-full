@@ -9,7 +9,6 @@ import subprocess
 
 from avatar_system.pipeline.shell_runner import run_bash_in_container
 
-
 def _find_first_value(obj, keys):
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -25,6 +24,128 @@ def _find_first_value(obj, keys):
             if found is not None:
                 return found
     return None
+
+
+def _latest_user_utterance(batch) -> str:
+    if not isinstance(batch, dict):
+        return ""
+    conversations = batch.get("conversations")
+    if not isinstance(conversations, list) or not conversations:
+        return ""
+    history = conversations[0].get("dialogue_history") if isinstance(conversations[0], dict) else None
+    if not isinstance(history, list):
+        return ""
+    for item in reversed(history):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("utterance") or item.get("text") or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _fallback_reply_from_batch(batch) -> str:
+    utterance = _latest_user_utterance(batch)
+    if not utterance:
+        return "我刚才没有听清你的具体内容。你可以再说一遍，我会根据你说的话继续回应。"
+    if len(utterance) > 80:
+        utterance = utterance[:77].rstrip() + "..."
+    return f"我听到你刚才说：“{utterance}”。我会先陪你把这部分慢慢说清楚。"
+
+
+def _english_fallback_reply_from_batch(batch) -> str:
+    utterance = _latest_user_utterance(batch)
+    if not utterance:
+        return "I did not catch the details clearly. Please say that again, and I will respond to what you share."
+    if len(utterance) > 90:
+        utterance = utterance[:87].rstrip() + "..."
+    emotion = "what you are feeling"
+    try:
+        emotion = str(batch.get("conversations", [{}])[0].get("coe", {}).get("speaker_emotion") or emotion)
+    except (AttributeError, IndexError, TypeError):
+        pass
+    return f"I hear the {emotion} in what you said: \"{utterance}\". Let's stay with that and take it one step at a time."
+
+
+def _llm_english_reply_from_batch(batch, config: dict | None = None) -> str:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return ""
+
+    utterance = _latest_user_utterance(batch)
+    if not utterance:
+        return ""
+
+    config = config or {}
+    model = (
+        os.environ.get("TASK1_LLM_MODEL")
+        or os.environ.get("LLM_MODEL")
+        or str(config.get("task1_llm_model") or "gpt-4o-mini")
+    )
+    base_url = (
+        os.environ.get("OPENAI_BASE_URL")
+        or str(config.get("openai_base_url") or "https://api.openai.com/v1")
+    ).rstrip("/")
+
+    emotion = ""
+    context = ""
+    try:
+        conv = batch.get("conversations", [{}])[0]
+        coe = conv.get("coe", {}) if isinstance(conv, dict) else {}
+        emotion = str(coe.get("speaker_emotion") or "")
+        context = str(coe.get("scene") or coe.get("video_summary") or "")
+    except (AttributeError, IndexError, TypeError):
+        pass
+
+    system = (
+        "You are the English dialogue brain for a friendly digital human in a short video call. "
+        "Reply in natural, specific English. Be warm and conversational, but do not sound like a therapist "
+        "unless the user is clearly discussing feelings. Use one or two concise sentences. "
+        "Do not mention that you are an AI, subtitles, ASR, or internal models."
+    )
+    user = (
+        f"User said: {utterance}\n"
+        f"Detected emotion: {emotion or 'unknown'}\n"
+        f"Visual/context notes: {context or 'none'}\n"
+        "Write the digital human's next spoken reply in English."
+    )
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 90,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(config.get("task1_llm_timeout", 20))) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+        return ""
+
+    try:
+        text = str(result["choices"][0]["message"]["content"]).strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+    if _looks_chinese(text):
+        return ""
+    return " ".join(text.split())
+
+
+def _looks_chinese(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
 
 
 class Task1Tool:
@@ -48,9 +169,7 @@ class Task1Tool:
         with open(state.task1_input_json, "r", encoding="utf-8") as f:
             batch = json.load(f)
 
-        reply_text = (
-            "我听到了你的感受。我们可以慢一点，把最重要的部分先说清楚。"
-        )
+        reply_text = _fallback_reply_from_batch(batch)
         payload = {
             "input_json": state.task1_input_json,
             "batch_preview": batch,
@@ -79,6 +198,10 @@ class Task1Tool:
         with open(out_json, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        preferred_text = _find_first_value(
+            data,
+            keys={"tts_text", "subtitle_text", "spoken_text", "english_tts_text"},
+        )
         reply_text = _find_first_value(
             data,
             keys={"reply_text", "response", "reply", "generated_text", "replyText"},
@@ -87,6 +210,29 @@ class Task1Tool:
             data,
             keys={"response_emotion", "style", "emotion", "reply_style"},
         )
+
+        fixed_chinese_reply = "谢谢你愿意和我说这些。你不用着急，想从哪里开始都可以。我会认真听你慢慢说。"
+        if preferred_text and not _looks_chinese(preferred_text):
+            reply_text = preferred_text
+        elif reply_text == fixed_chinese_reply or _looks_chinese(reply_text or ""):
+            batch = data.get("batch_preview")
+            if not isinstance(batch, dict):
+                try:
+                    with open(state.task1_input_json, "r", encoding="utf-8") as f:
+                        batch = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    batch = {}
+            reply_text = _llm_english_reply_from_batch(batch, self.config) or _english_fallback_reply_from_batch(batch)
+
+        if reply_text:
+            data["reply_text"] = reply_text
+            data["tts_text"] = reply_text
+            raw_result = data.get("raw_result")
+            if isinstance(raw_result, dict):
+                raw_result["reply_text"] = reply_text
+                raw_result["generated_text"] = reply_text
+            with open(out_json, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
         state.task1_reply_json = out_json
         state.reply_text = reply_text
@@ -150,7 +296,7 @@ class Task1Tool:
         root = p["avamerg_root"]
         venv = p["avamerg_venv"]
         container_image = p["gaussian_container_image"]
-        out_dir = p["avamerg_reply_out_dir"]
+        out_dir = os.path.join(state.run_dir, "task1")
         py = os.path.join(venv, "bin/python")
 
         if not os.path.lexists(py):

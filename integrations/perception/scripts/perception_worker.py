@@ -65,14 +65,16 @@ class PerceptionEngine:
 
     def _run_asr(self, wav_path: Path, model_name: str, language: str) -> dict[str, Any]:
         model = self._get_asr_model(model_name)
+        language_arg = str(language or "").strip()
+        whisper_language = None if language_arg.lower() in {"", "auto", "detect"} else language_arg
         with self.lock:
-            result = model.transcribe(str(wav_path), language=language)
+            result = model.transcribe(str(wav_path), language=whisper_language)
         return {
             "utterance_id": wav_path.stem,
             "wav_path": str(wav_path.resolve()),
             "text": result["text"].strip(),
             "asr_source": f"whisper-{model_name}",
-            "language": language,
+            "language": result.get("language") or language_arg or "auto",
         }
 
     def _run_ser(self, wav_path: Path, model_name: str) -> dict[str, Any]:
@@ -127,7 +129,7 @@ class PerceptionEngine:
             "asr_source": asr_ret["asr_source"],
             "emotion_source": ser_ret["emotion_source"],
             "speaker_id": speaker_id,
-            "language": "zh",
+            "language": asr_ret.get("language") or language,
         }
         save_json(perception_obj, perception_out_path)
 
@@ -197,7 +199,7 @@ class PerceptionRequestHandler(BaseHTTPRequestHandler):
                 perception_out=str(payload["perception_out"]),
                 task1_out=str(payload["task1_out"]),
                 model=str(payload.get("model", "")),
-                language=str(payload.get("language", "Chinese")),
+                language=str(payload.get("language", "auto")),
                 speaker_id=str(payload.get("speaker_id", "user")),
                 ser_model=str(payload.get("ser_model", "")),
                 no_llm=bool(payload.get("no_llm", False)),

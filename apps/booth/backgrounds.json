@@ -1,0 +1,19 @@
+{
+  "backgrounds": [
+    {
+      "id": "study",
+      "label": "Study",
+      "image_url": "/digital_human_backgrounds/study_db692a17.png"
+    },
+    {
+      "id": "bedroom",
+      "label": "Bedroom",
+      "image_url": ""
+    },
+    {
+      "id": "sofa",
+      "label": "Sofa",
+      "image_url": ""
+    }
+  ]
+}

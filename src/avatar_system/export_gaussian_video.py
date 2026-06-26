@@ -248,7 +248,7 @@ def main() -> None:
             motion_path=motion_path,
             load_micro_expression=not args.disable_micro_expression,
         )
-        background = torch.tensor([1, 1, 1], dtype=torch.float32, device="cuda")
+        background = torch.tensor([0.04, 0.05, 0.07], dtype=torch.float32, device="cuda")
         if args.camera_json:
             cam = prepare_camera_from_three(args.width, args.height, Path(args.camera_json).resolve())
         else:

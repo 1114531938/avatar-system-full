@@ -81,9 +81,17 @@ class InputAgent:
         log_path = Path(state.log_dir) / "input_agent.log"
         return_code = self._run_ffmpeg(cmd, log_path)
         if return_code != 0:
-            raise RuntimeError(f"ffmpeg failed while extracting video frames; see {log_path}")
+            warning = f"ffmpeg failed while extracting video frames; continuing with audio only. See {log_path}"
+            state.extra.setdefault("input_agent", {})["video_warning"] = warning
+            state.extra["input_agent"]["input_video_valid"] = False
+            state.input_video = None
+            state.video_frames_dir = None
+            with log_path.open("a", encoding="utf-8") as log:
+                log.write(f"\n[input_agent_warning] {warning}\n")
+            return
         state.extra.setdefault("input_agent", {})["video_frames_dir"] = str(frames_dir)
         state.extra["input_agent"]["frame_count"] = len(list(frames_dir.glob("frame_*.jpg")))
+        state.extra["input_agent"]["input_video_valid"] = True
 
     def _write_perception_result(self, state) -> None:
         perception_data = load_json(getattr(state, "perception_json", None))

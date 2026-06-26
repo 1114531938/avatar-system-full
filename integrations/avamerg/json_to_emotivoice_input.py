@@ -1,8 +1,11 @@
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict
 
@@ -27,6 +30,95 @@ def extract_reply_text(obj: Dict[str, Any]) -> str:
                 return value.strip()
 
     raise ValueError("No valid reply_text found in json.")
+
+
+def looks_chinese(text: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in text or "")
+
+
+def extract_tts_text(obj: Dict[str, Any]) -> str | None:
+    for key in ["tts_text", "spoken_text", "english_tts_text"]:
+        value = obj.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    raw = obj.get("raw_result", {})
+    if isinstance(raw, dict):
+        for key in ["tts_text", "spoken_text", "english_tts_text"]:
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return None
+
+
+def translate_to_english(text: str, model: str, base_url: str, api_key: str) -> str:
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is empty; cannot translate TTS text.")
+
+    url = base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Translate the user's empathetic reply into natural spoken English for TTS. "
+                    "Preserve the meaning and emotional warmth. Return only the English sentence."
+                ),
+            },
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.2,
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"TTS translation request failed: {exc}") from exc
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError(f"TTS translation response has no choices: {data}")
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    translated = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(translated, str) or not translated.strip():
+        raise RuntimeError(f"TTS translation response has empty content: {data}")
+
+    translated = translated.strip().strip("\"'")
+    if looks_chinese(translated):
+        raise RuntimeError(f"TTS translation still contains Chinese: {translated}")
+    return translated
+
+
+def resolve_tts_text(raw_text: str, obj: Dict[str, Any], args: argparse.Namespace) -> str:
+    explicit = extract_tts_text(obj)
+    if explicit:
+        return explicit
+
+    if args.tts_language != "en" or not looks_chinese(raw_text):
+        return raw_text
+
+    try:
+        return translate_to_english(
+            raw_text,
+            model=args.llm_model,
+            base_url=args.llm_base_url,
+            api_key=args.llm_api_key,
+        )
+    except RuntimeError as exc:
+        print(f"[tts_translate] {exc}; falling back to original reply_text", file=sys.stderr)
+        return raw_text
 
 
 def extract_batch_preview(obj: Dict[str, Any]) -> Dict[str, Any]:
@@ -190,12 +282,43 @@ def main():
         action="store_true",
         help="是否把音素包装成 <sos/eos> phonemes <sos/eos>",
     )
+    parser.add_argument(
+        "--tts_language",
+        type=str,
+        default="en",
+        choices=["original", "en"],
+        help="TTS 使用的文本语言：original 使用 reply_text 原文；en 会把中文 reply_text 翻译成英文后再送 TTS",
+    )
+    parser.add_argument(
+        "--llm_model",
+        type=str,
+        default=os.environ.get("LLM_MODEL", "openai/gpt-oss-120b:free"),
+        help="用于 TTS 文本翻译的 OpenAI-compatible model",
+    )
+    parser.add_argument(
+        "--llm_base_url",
+        type=str,
+        default=os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
+        help="用于 TTS 文本翻译的 OpenAI-compatible base URL",
+    )
+    parser.add_argument(
+        "--llm_api_key",
+        type=str,
+        default=os.environ.get("OPENAI_API_KEY", ""),
+        help="用于 TTS 文本翻译的 API key",
+    )
     args = parser.parse_args()
 
     obj = load_json(args.input_json)
     batch = extract_batch_preview(obj)
 
     raw_text = extract_reply_text(obj)
+    tts_text = resolve_tts_text(raw_text, obj, args)
+    if tts_text and tts_text != obj.get("tts_text"):
+        obj["tts_text"] = tts_text
+        with open(args.input_json, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=2)
+
     speaker_id = extract_speaker_id(batch, args.speaker_id)
     style_prompt = build_style_prompt(
         batch=batch,
@@ -203,14 +326,14 @@ def main():
         custom_prompt=args.custom_prompt,
     )
 
-    phoneme_seq = run_frontend(args.frontend_py, raw_text)
+    phoneme_seq = run_frontend(args.frontend_py, tts_text)
 
     if args.wrap_sos_eos:
         phoneme_field = f"<sos/eos> {phoneme_seq} <sos/eos>"
     else:
         phoneme_field = phoneme_seq
 
-    output_line = f"{speaker_id}|{style_prompt}|{phoneme_field}|{raw_text}"
+    output_line = f"{speaker_id}|{style_prompt}|{phoneme_field}|{tts_text}"
 
     out_path = Path(args.output_txt)
     out_path.parent.mkdir(parents=True, exist_ok=True)

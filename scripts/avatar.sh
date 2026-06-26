@@ -26,13 +26,14 @@ common_env() {
   export AVATAR_FFMPEG="${AVATAR_FFMPEG:-$ROOT/runtime/cache/bin/ffmpeg}"
   export AVATAR_FFPROBE="${AVATAR_FFPROBE:-$ROOT/runtime/cache/bin/ffprobe}"
   export DEPB_FFMPEG="${DEPB_FFMPEG:-$AVATAR_FFMPEG}"
+  export TMPDIR="${TMPDIR:-$ROOT/runtime/tmp}"
   export PATH="$ROOT/runtime/cache/bin:$PATH"
   export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
   export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
   export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
   export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
   export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
-  mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$MODELSCOPE_CACHE" "$NLTK_DATA" "$ROOT/runtime/outputs"
+  mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$MODELSCOPE_CACHE" "$NLTK_DATA" "$TMPDIR" "$ROOT/runtime/outputs"
 }
 
 run_web() {
@@ -45,6 +46,8 @@ run_web() {
 
 run_booth() {
   export BOOTH_DEFAULT_ROUTE="${BOOTH_DEFAULT_ROUTE:-1}"
+  common_env
+  ensure_booth_workers
   PORT="${PORT:-7862}" run_web "$@"
 }
 
@@ -67,8 +70,32 @@ run_agent() {
 run_3depb() {
   local port="${PORT:-7862}"
   export PORT="$port"
+  common_env
+  ensure_booth_workers
   cd "$ROOT/apps/booth"
   exec /usr/bin/python3 server.py
+}
+
+ensure_booth_workers() {
+  if [[ "${DEPB_AUTO_START_WORKERS:-1}" != "1" ]]; then
+    return 0
+  fi
+  mkdir -p "$(service_log_dir)"
+  if [[ "${START_TTS_WORKER:-1}" == "1" ]]; then
+    service_start_worker tts tts_worker "http://${TTS_WORKER_HOST:-127.0.0.1}:${TTS_WORKER_PORT:-8788}" "${TTS_WORKER_START_TIMEOUT:-240}"
+  fi
+  if [[ "${START_AVAMERG_WORKER:-1}" == "1" ]]; then
+    service_start_worker avamerg avamerg_worker "http://${AVAMERG_WORKER_HOST:-127.0.0.1}:${AVAMERG_WORKER_PORT:-8789}" "${AVAMERG_WORKER_START_TIMEOUT:-240}"
+  fi
+  if [[ "${START_DEEPTALK_WORKER:-1}" == "1" ]]; then
+    service_start_worker deeptalk deeptalk_worker "http://${DEEPTALK_WORKER_HOST:-127.0.0.1}:${DEEPTALK_WORKER_PORT:-8790}" "${DEEPTALK_WORKER_START_TIMEOUT:-180}"
+  fi
+  if [[ "${START_PERCEPTION_WORKER:-1}" == "1" ]]; then
+    service_start_worker perception perception_worker "http://${PERCEPTION_WORKER_HOST:-127.0.0.1}:${PERCEPTION_WORKER_PORT:-8791}" "${PERCEPTION_WORKER_START_TIMEOUT:-240}"
+  fi
+  if [[ "${START_GAUSSIAN_RENDER_WORKER:-1}" == "1" ]]; then
+    service_start_worker gaussian gaussian_render_worker "http://${GAUSSIAN_RENDER_WORKER_HOST:-127.0.0.1}:${GAUSSIAN_RENDER_WORKER_PORT:-8792}" "${GAUSSIAN_RENDER_WORKER_START_TIMEOUT:-180}"
+  fi
 }
 
 container_exec() {
@@ -219,21 +246,7 @@ service_start() {
   local mode="$1"
   common_env
   mkdir -p "$(service_log_dir)"
-  if [[ "${START_TTS_WORKER:-1}" == "1" ]]; then
-    service_start_worker tts tts_worker "http://${TTS_WORKER_HOST:-127.0.0.1}:${TTS_WORKER_PORT:-8788}" "${TTS_WORKER_START_TIMEOUT:-240}"
-  fi
-  if [[ "${START_AVAMERG_WORKER:-1}" == "1" ]]; then
-    service_start_worker avamerg avamerg_worker "http://${AVAMERG_WORKER_HOST:-127.0.0.1}:${AVAMERG_WORKER_PORT:-8789}" 240
-  fi
-  if [[ "${START_DEEPTALK_WORKER:-1}" == "1" ]]; then
-    service_start_worker deeptalk deeptalk_worker "http://${DEEPTALK_WORKER_HOST:-127.0.0.1}:${DEEPTALK_WORKER_PORT:-8790}" 180
-  fi
-  if [[ "${START_PERCEPTION_WORKER:-1}" == "1" ]]; then
-    service_start_worker perception perception_worker "http://${PERCEPTION_WORKER_HOST:-127.0.0.1}:${PERCEPTION_WORKER_PORT:-8791}" 240
-  fi
-  if [[ "${START_GAUSSIAN_RENDER_WORKER:-1}" == "1" ]]; then
-    service_start_worker gaussian gaussian_render_worker "http://${GAUSSIAN_RENDER_WORKER_HOST:-127.0.0.1}:${GAUSSIAN_RENDER_WORKER_PORT:-8792}" 180
-  fi
+  ensure_booth_workers
 
   case "$mode" in
     web) service_start_frontend web web 7861 ;;

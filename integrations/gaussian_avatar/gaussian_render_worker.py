@@ -47,7 +47,7 @@ class GaussianRenderEngine:
         self.lock = threading.Lock()
         self.cache: dict[tuple[str, str], Any] = {}
         self.pipeline = PipelineConfig()
-        self.background = torch.tensor([1, 1, 1], dtype=torch.float32, device="cuda")
+        self.background = torch.tensor([0.04, 0.05, 0.07], dtype=torch.float32, device="cuda")
 
     def _load_gaussians(self, point_path: str, motion_path: str):
         key = (str(Path(point_path).resolve()), str(Path(motion_path).resolve()))

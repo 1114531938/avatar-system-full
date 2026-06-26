@@ -34,7 +34,7 @@ env:
 
 perception:
   model: small
-  language: Chinese
+  language: en
   speaker_id: user
   ser_model: iic/emotion2vec_plus_seed
 
@@ -78,3 +78,7 @@ merge:
 runtime:
   run_root: ${PROJECT_ROOT}/runtime/outputs
   viewer_detached: true
+  export_white_model_video: false
+  video_fps: 25
+  video_width: 550
+  video_height: 802

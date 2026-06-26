@@ -11,8 +11,8 @@ SYSTEM_PROMPT = """
 You are a strict JSON generator for an empathetic dialogue system.
 
 Tasks:
-1. Convert Traditional Chinese into natural Simplified Chinese.
-2. Add proper Chinese punctuation.
+1. Detect whether the user's utterance is Chinese or English.
+2. Normalize punctuation while preserving the user's language.
 3. Infer a semantic emotion label for empathetic dialogue understanding.
 4. Infer a suitable responder profile.
 5. Convert the input into Task1-style JSON.
@@ -23,7 +23,7 @@ STRICT RULES:
 - Do not output code fences.
 - Do not output any explanation.
 - Keep the original meaning unchanged.
-- The utterance must be natural Simplified Chinese with punctuation.
+- The utterance must stay in the user's language: Chinese input stays Chinese, English input stays English.
 - speaker_emotion must reflect semantic tone, not merely copy acoustic emotion.
 - response must always be an empty string.
 - Follow the schema exactly.
@@ -45,7 +45,7 @@ Target schema:
         {{
           "index": 0,
           "role": "speaker",
-          "utterance": "<normalized simplified chinese text with punctuation>"
+          "utterance": "<normalized user utterance in the original language with punctuation>"
         }}
       ],
       "response": "",
@@ -75,8 +75,8 @@ Target schema:
 }}
 
 Requirements:
-- "utterance" must be Simplified Chinese with natural punctuation.
-- Use the normalized text field if needed, but improve it if it is awkward.
+- "utterance" must preserve the user's language. Do not translate English into Chinese or Chinese into English.
+- Use the normalized text field if needed, but improve punctuation if it is awkward.
 - If the acoustic emotion is "neutral" but the semantics are warm, caring, supportive, hopeful, gentle, or affectionate, use a semantic label like "warm", "supportive", "hopeful", or "gentle".
 - Infer responder profile naturally from the utterance and conversation style.
 - response_age / response_gender / response_timbre should be simple string labels.
@@ -161,7 +161,7 @@ def finalize_task1_result(
                     {
                         "index": 0,
                         "role": "speaker",
-                        "utterance": "你好。"
+                        "utterance": "Hello."
                     }
                 ],
                 "response": "",
@@ -320,7 +320,7 @@ def build_fallback_task1(
     text = (perception_obj.get("text") or perception_obj.get("text_raw") or "").strip()
 
     if not text:
-        text = "你好。"
+        text = "Hello."
 
     coe = {
         "speaker_emotion": "neutral",
