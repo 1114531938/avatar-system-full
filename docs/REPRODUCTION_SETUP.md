@@ -9,6 +9,47 @@ model checkpoints, avatar point clouds, runtime cache, secrets, uploads, or
 generated outputs. Those files are intentionally ignored because they are large,
 machine-specific, or sensitive.
 
+## Runtime Asset Release
+
+The full Booth and worker chain needs a separate runtime asset bundle. On a new
+server, restore it after cloning:
+
+```bash
+cd "$AVATAR_SYSTEM_ROOT"
+bash scripts/download_runtime_assets.sh
+```
+
+By default the script downloads GitHub Release assets from:
+
+```text
+repo: 1114531938/avatar-system-full
+tag:  runtime-assets-2026-07-01
+```
+
+Override these if a newer Release is published:
+
+```bash
+export AVATAR_RUNTIME_REPO=1114531938/avatar-system-full
+export AVATAR_RUNTIME_RELEASE_TAG=runtime-assets-2026-07-01
+export AVATAR_RUNTIME_ASSET_PREFIX=avatar-system-full-runtime-assets
+bash scripts/download_runtime_assets.sh
+```
+
+The restore script verifies `sha256sums.txt`, extracts the split
+`tar.zst` archive into the repository root, and checks the required paths for
+the 7862 Booth stack and workers 8788-8792.
+
+To publish the runtime bundle from the original server:
+
+```bash
+cd /scratch/e1554543/avatar_system_full
+export GH_TOKEN=...   # GitHub token with repo contents/release permission
+bash scripts/publish_runtime_assets.sh
+```
+
+Without `GH_TOKEN` or `GITHUB_TOKEN`, the publish script still creates local
+split artifacts under `runtime/release_assets/runtime-assets-2026-07-01/`.
+
 ## 1. Verify the GitHub Source Snapshot
 
 On the original server, the repository remote is:

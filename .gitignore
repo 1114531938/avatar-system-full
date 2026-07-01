@@ -21,6 +21,7 @@ runtime/cache/
 runtime/containers/
 runtime/data/
 runtime/outputs/
+runtime/release_assets/
 
 # App-local generated state
 apps/booth/data/
