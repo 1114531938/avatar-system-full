@@ -9,7 +9,7 @@ REPO="${AVATAR_RUNTIME_REPO:-1114531938/avatar-system-full}"
 TAG="${AVATAR_RUNTIME_RELEASE_TAG:-runtime-assets-2026-07-01}"
 PREFIX="${AVATAR_RUNTIME_ASSET_PREFIX:-avatar-system-full-runtime-assets}"
 OUT_DIR="${AVATAR_RUNTIME_OUT_DIR:-$ROOT/runtime/release_assets/$TAG}"
-SPLIT_SIZE="${AVATAR_RUNTIME_SPLIT_SIZE:-1800M}"
+SPLIT_SIZE="${AVATAR_RUNTIME_SPLIT_SIZE:-500M}"
 ZSTD_LEVEL="${AVATAR_RUNTIME_ZSTD_LEVEL:-3}"
 TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 UPLOAD="${AVATAR_RUNTIME_UPLOAD:-auto}"
@@ -22,11 +22,6 @@ NORMAL_ASSET_PATHS=(
   "runtime/cache/bin/ffprobe"
   "runtime/cache/bin/ffmpeg.container-bin"
   "runtime/cache/bin/ffprobe.container-bin"
-  "runtime/cache/venvs/perception"
-  "runtime/cache/venvs/deeptalk"
-  "integrations/avamerg/.avamerg38"
-  "integrations/emotivoice/.EmotiVoice"
-  "integrations/gaussian_avatar/.GSavatar_glibc"
   "runtime/cache/xdg/whisper/small.pt"
   "runtime/cache/modelscope/models/iic/emotion2vec_plus_seed"
   "integrations/deeptalk/DEE/models/emo2vec/checkpoint/emotion2vec_base.pt"
@@ -194,7 +189,8 @@ upload_one() {
   echo "Uploading $name"
   curl -fsS "${auth[@]}" \
     -H "Content-Type: application/octet-stream" \
-    --data-binary "@$file" \
+    -X POST \
+    --upload-file "$file" \
     "$upload_url?name=$name" >/dev/null
 }
 

@@ -4,10 +4,11 @@ This document is the migration checklist for running `avatar_system_full` on a
 new experiment server after cloning from GitHub.
 
 Important: GitHub contains the source code, UI assets, scripts, and docs. It
-does not contain local virtual environments, Apptainer containers, downloaded
-model checkpoints, avatar point clouds, runtime cache, secrets, uploads, or
-generated outputs. Those files are intentionally ignored because they are large,
-machine-specific, or sensitive.
+does not directly commit local virtual environments, Apptainer containers,
+downloaded model checkpoints, avatar point clouds, runtime cache, secrets,
+uploads, or generated outputs. Large non-rebuildable runtime assets are
+published as GitHub Release artifacts; Python virtual environments are rebuilt
+from the repository requirements files.
 
 ## Runtime Asset Release
 
@@ -35,9 +36,22 @@ export AVATAR_RUNTIME_ASSET_PREFIX=avatar-system-full-runtime-assets
 bash scripts/download_runtime_assets.sh
 ```
 
-The restore script verifies `sha256sums.txt`, extracts the split
-`tar.zst` archive into the repository root, and checks the required paths for
-the 7862 Booth stack and workers 8788-8792.
+The restore script verifies `sha256sums.txt`, extracts the split `tar.zst`
+archive into the repository root, checks the required model/container/avatar
+paths for the 7862 Booth stack and workers 8788-8792, and then rebuilds missing
+Python virtual environments by default.
+
+To restore only the Release assets and skip venv creation:
+
+```bash
+AVATAR_RUNTIME_REBUILD_VENVS=0 bash scripts/download_runtime_assets.sh
+```
+
+To rebuild environments later:
+
+```bash
+bash scripts/rebuild_runtime_venvs.sh
+```
 
 To publish the runtime bundle from the original server:
 
@@ -49,6 +63,17 @@ bash scripts/publish_runtime_assets.sh
 
 Without `GH_TOKEN` or `GITHUB_TOKEN`, the publish script still creates local
 split artifacts under `runtime/release_assets/runtime-assets-2026-07-01/`.
+The publish script intentionally excludes Python virtual environment directories
+because they are machine-specific and can be recreated with
+`scripts/rebuild_runtime_venvs.sh`.
+
+If the repository filesystem has a small quota, write temporary publish files to
+local scratch space:
+
+```bash
+AVATAR_RUNTIME_OUT_DIR=/tmp/avatar_runtime_release/runtime-assets-2026-07-01 \
+  bash scripts/publish_runtime_assets.sh
+```
 
 ## 1. Verify the GitHub Source Snapshot
 
@@ -181,52 +206,24 @@ integrations/emotivoice/.EmotiVoice
 integrations/gaussian_avatar/.GSavatar_glibc
 ```
 
-Create the web environment:
+Create or repair all runtime Python environments with:
 
 ```bash
-python3 -m venv "$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/web"
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/web/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/web/bin/python" -m pip install -r apps/web/requirements.txt
+bash scripts/rebuild_runtime_venvs.sh
 ```
 
-Create the perception environment:
+The script uses `python3` for web, perception, DEEPTalk, EmotiVoice, and
+GaussianAvatar, and `python3.8` for AvaMERG. Override interpreters when needed:
 
 ```bash
-python3 -m venv "$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/perception"
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/perception/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/perception/bin/python" -m pip install -r integrations/perception/env/requirements_whisper_stage1.txt
+AVATAR_PYTHON3=/usr/bin/python3 AVATAR_PYTHON38=/usr/bin/python3.8 \
+  bash scripts/rebuild_runtime_venvs.sh
 ```
 
-Create the DEEPTalk environment:
+To recreate existing environments from scratch:
 
 ```bash
-python3 -m venv "$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/deeptalk"
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/deeptalk/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/runtime/cache/venvs/deeptalk/bin/python" -m pip install -r integrations/deeptalk/requirements.txt
-```
-
-Create the AvaMERG environment. It uses Python 3.8 in the current layout:
-
-```bash
-python3.8 -m venv "$AVATAR_SYSTEM_ROOT/integrations/avamerg/.avamerg38"
-"$AVATAR_SYSTEM_ROOT/integrations/avamerg/.avamerg38/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/integrations/avamerg/.avamerg38/bin/python" -m pip install -r integrations/avamerg/requirements.txt
-```
-
-Create the EmotiVoice environment:
-
-```bash
-python3 -m venv "$AVATAR_SYSTEM_ROOT/integrations/emotivoice/.EmotiVoice"
-"$AVATAR_SYSTEM_ROOT/integrations/emotivoice/.EmotiVoice/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/integrations/emotivoice/.EmotiVoice/bin/python" -m pip install -r integrations/emotivoice/requirements.txt
-```
-
-Create the GaussianAvatar environment:
-
-```bash
-python3 -m venv "$AVATAR_SYSTEM_ROOT/integrations/gaussian_avatar/.GSavatar_glibc"
-"$AVATAR_SYSTEM_ROOT/integrations/gaussian_avatar/.GSavatar_glibc/bin/python" -m pip install -U pip
-"$AVATAR_SYSTEM_ROOT/integrations/gaussian_avatar/.GSavatar_glibc/bin/python" -m pip install -r integrations/gaussian_avatar/requirements.txt
+AVATAR_REBUILD_VENVS_FORCE=1 bash scripts/rebuild_runtime_venvs.sh
 ```
 
 If binary CUDA packages fail, recreate each environment with the exact PyTorch

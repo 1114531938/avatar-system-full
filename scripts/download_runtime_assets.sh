@@ -72,11 +72,6 @@ REQUIRED_PATHS=(
   "runtime/containers/gaussianav_jammy"
   "runtime/cache/bin/ffmpeg"
   "runtime/cache/bin/ffprobe"
-  "runtime/cache/venvs/perception/bin/python"
-  "runtime/cache/venvs/deeptalk/bin/python"
-  "integrations/avamerg/.avamerg38/bin/python"
-  "integrations/emotivoice/.EmotiVoice/bin/python"
-  "integrations/gaussian_avatar/.GSavatar_glibc/bin/python"
   "runtime/cache/xdg/whisper/small.pt"
   "runtime/cache/modelscope/models/iic/emotion2vec_plus_seed"
   "integrations/deeptalk/DEE/models/emo2vec/checkpoint/emotion2vec_base.pt"
@@ -110,6 +105,32 @@ done
 if [[ "$missing" -ne 0 ]]; then
   echo "Runtime asset restore finished, but required files are still missing." >&2
   exit 1
+fi
+
+REBUILD_VENVS="${AVATAR_RUNTIME_REBUILD_VENVS:-auto}"
+VENV_PATHS=(
+  "runtime/cache/venvs/web/bin/python"
+  "runtime/cache/venvs/perception/bin/python"
+  "runtime/cache/venvs/deeptalk/bin/python"
+  "integrations/avamerg/.avamerg38/bin/python"
+  "integrations/emotivoice/.EmotiVoice/bin/python"
+  "integrations/gaussian_avatar/.GSavatar_glibc/bin/python"
+)
+
+venv_missing=0
+for rel in "${VENV_PATHS[@]}"; do
+  if [[ ! -x "$ROOT/$rel" ]]; then
+    venv_missing=1
+  fi
+done
+
+if [[ "$REBUILD_VENVS" == "1" || "$REBUILD_VENVS" == "true" || "$REBUILD_VENVS" == "yes" ||
+      ( "$REBUILD_VENVS" == "auto" && "$venv_missing" -ne 0 ) ]]; then
+  echo "Rebuilding missing runtime Python environments"
+  bash "$ROOT/scripts/rebuild_runtime_venvs.sh"
+elif [[ "$venv_missing" -ne 0 ]]; then
+  echo "Runtime assets are restored, but one or more Python venvs are missing." >&2
+  echo "Run scripts/rebuild_runtime_venvs.sh before starting the workers." >&2
 fi
 
 if ! command -v apptainer >/dev/null 2>&1 && ! command -v singularity >/dev/null 2>&1; then
